@@ -766,6 +766,383 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// Infinite-board suite (sparse coordinates, region, rejoin, rematch)
+// ---------------------------------------------------------------------------
+const infinite = await startServer();
+const infiniteSockets = [];
+
+async function createInfinitePair() {
+  const host = await connect(infinite.port);
+  const guest = await connect(infinite.port);
+  infiniteSockets.push(host, guest);
+  const hostTracker = tracker(host);
+  const created = await request(host, 'room:create', {
+    name: 'Mèo Vô Cực',
+    avatar: 'orange',
+    size: 'infinite',
+  });
+  assert.equal(created.ok, true, JSON.stringify(created));
+  const joined = await request(guest, 'room:join', {
+    roomId: created.roomId,
+    name: 'Mèo Tinh Tú',
+    avatar: 'gray',
+  });
+  assert.equal(joined.ok, true, JSON.stringify(joined));
+  const playing = await hostTracker.until((s) => s.status === 'playing', 'infinite round');
+  return {
+    host,
+    guest,
+    roomId: created.roomId,
+    keyGuest: joined.playerKey,
+    tracker: hostTracker,
+    created,
+    state: playing,
+    starter: playing.turn,
+  };
+}
+
+async function moveInfinite(socket, x, y) {
+  const res = await request(socket, 'game:move', { x, y });
+  assert.equal(res.ok, true, `move (${x},${y}) rejected: ${JSON.stringify(res)}`);
+  await sleep(120);
+}
+
+let infPair;
+let winPair;
+
+try {
+  await test('infinite create/join exposes sparse region, 5-in-a-row and 45s timer', async () => {
+    const C = await connect(infinite.port);
+    infiniteSockets.push(C);
+    for (const size of ['Infinite', 'INFINITE', '∞']) {
+      const res = await request(C, 'room:create', {
+        name: 'Mèo Sai',
+        avatar: 'gray',
+        size,
+      });
+      assert.equal(res.ok, false, `size ${size} should be rejected`);
+      assert.equal(res.code, 'invalidSize');
+      await sleep(130);
+    }
+
+    infPair = await createInfinitePair();
+    const waiting = infPair.created.state;
+    assert.equal(waiting.size, 'infinite');
+    assert.equal(waiting.board, null);
+    assert.equal(waiting.winLength, 5);
+    assert.deepEqual(waiting.moves, []);
+    assert.equal(waiting.moveCount, 0);
+    assert.equal(waiting.maxMoves, 2000);
+    assert.deepEqual(waiting.region, { minX: -4, maxX: 4, minY: -4, maxY: 4 });
+    assert.equal(waiting.lastMove, null);
+    assert.equal(waiting.turnMs, 45000);
+
+    const playing = infPair.state;
+    assert.equal(playing.size, 'infinite');
+    assert.equal(playing.board, null);
+    assert.deepEqual(playing.moves, []);
+    assert.deepEqual(playing.region, { minX: -4, maxX: 4, minY: -4, maxY: 4 });
+    assert.equal(playing.turnMs, 45000);
+    assert.ok(playing.turnEndsIn > 0);
+    assert.equal(playing.players.length, 2);
+  });
+
+  await test('infinite moves are strictly validated and region expands', async () => {
+    const W = infPair.starter;
+    const O = otherSymbol(W);
+    const Ws = socketFor(infPair, W);
+    const Os = socketFor(infPair, O);
+
+    let res = await request(Os, 'game:move', { x: 0, y: 0 });
+    assert.equal(res.ok, false);
+    assert.equal(res.code, 'notYourTurn');
+    await sleep(130);
+
+    const invalidCoords = [
+      { x: '0', y: 0 },
+      { x: 0.5, y: 0 },
+      { x: null, y: 0 },
+      { x: 0 },
+      { x: Infinity, y: 0 },
+      { x: 0, y: '1' },
+    ];
+    for (const coords of invalidCoords) {
+      res = await request(Ws, 'game:move', coords);
+      assert.equal(res.ok, false, `coords ${JSON.stringify(coords)} should be rejected`);
+      assert.equal(res.code, 'invalidCoord');
+      await sleep(130);
+    }
+
+    for (const coords of [{ x: 5, y: 0 }, { x: 0, y: -5 }]) {
+      res = await request(Ws, 'game:move', coords);
+      assert.equal(res.ok, false);
+      assert.equal(res.code, 'coordOutsideRegion');
+      await sleep(130);
+    }
+
+    await moveInfinite(Ws, 0, 0);
+    res = await request(Os, 'game:move', { x: 0, y: 0 });
+    assert.equal(res.ok, false);
+    assert.equal(res.code, 'cellTaken');
+    await moveInfinite(Os, 1, 1);
+
+    await moveInfinite(Ws, 4, 4);
+    await moveInfinite(Os, 6, 1);
+
+    const expanded = await infPair.tracker.until(
+      (s) => s.moveCount === 4,
+      'infinite expanded region'
+    );
+    assert.deepEqual(expanded.region, { minX: -4, maxX: 8, minY: -4, maxY: 6 });
+    assert.deepEqual(expanded.moves, [
+      { x: 0, y: 0, s: W },
+      { x: 1, y: 1, s: O },
+      { x: 4, y: 4, s: W },
+      { x: 6, y: 1, s: O },
+    ]);
+    assert.deepEqual(expanded.lastMove, { x: 6, y: 1 });
+
+    const doubleClick = await Promise.all([
+      request(Ws, 'game:move', { x: 2, y: 2 }),
+      request(Ws, 'game:move', { x: 3, y: 3 }),
+    ]);
+    assert.equal(doubleClick[0].ok, true);
+    assert.equal(doubleClick[1].ok, false);
+    assert.equal(doubleClick[1].code, 'notYourTurn');
+    await sleep(130);
+
+    await moveInfinite(Os, -4, 0);
+    res = await request(Ws, 'game:move', { x: 9, y: 1 });
+    assert.equal(res.ok, false);
+    assert.equal(res.code, 'coordOutsideRegion');
+  });
+
+  await test('infinite win on negative coordinates reports object winLine', async () => {
+    winPair = await createInfinitePair();
+    const W = winPair.starter;
+    const L = otherSymbol(W);
+    const Ws = socketFor(winPair, W);
+    const Ls = socketFor(winPair, L);
+    const overHost = nextEvent(winPair.host, 'game:over');
+    const overGuest = nextEvent(winPair.guest, 'game:over');
+
+    const line = [
+      { x: -3, y: 0 },
+      { x: -2, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ];
+    const replies = [
+      { x: 3, y: 3 },
+      { x: 4, y: 3 },
+      { x: 3, y: 4 },
+      { x: 4, y: 4 },
+    ];
+    for (let step = 0; step < 4; step += 1) {
+      await moveInfinite(Ws, line[step].x, line[step].y);
+      await moveInfinite(Ls, replies[step].x, replies[step].y);
+    }
+    await moveInfinite(Ws, line[4].x, line[4].y);
+
+    const [forHost, forGuest] = await Promise.all([overHost, overGuest]);
+    for (const payload of [forHost, forGuest]) {
+      assert.equal(payload.winner, W);
+      assert.equal(payload.reason, 'win');
+      assert.deepEqual(payload.winLine, line);
+    }
+
+    const finished = await winPair.tracker.until(
+      (s) => s.status === 'finished',
+      'infinite finished'
+    );
+    assert.equal(finished.size, 'infinite');
+    assert.equal(finished.winLength, 5);
+    assert.equal(finished.board, null);
+    assert.equal(finished.moveCount, 9);
+    assert.equal(finished.maxMoves, 2000);
+    assert.equal(finished.lastMove.x, 1);
+    assert.equal(finished.lastMove.y, 0);
+    assert.deepEqual(finished.winLine, line);
+    assert.equal(finished.score[W], 1);
+    assert.equal(finished.turnEndsIn, null);
+  });
+
+  await test('infinite rematch resets the board, keeps the size and alternates starter', async () => {
+    const previousStarter = winPair.starter;
+    const nextStarter = otherSymbol(previousStarter);
+    const restartHost = nextEvent(winPair.host, 'game:restart');
+    const restartGuest = nextEvent(winPair.guest, 'game:restart');
+
+    let res = await request(winPair.guest, 'game:rematch', {});
+    assert.equal(res.ok, true);
+    res = await request(winPair.host, 'game:rematch', {});
+    assert.equal(res.ok, true);
+
+    const [forHost, forGuest] = await Promise.all([restartHost, restartGuest]);
+    assert.equal(forHost.starter, nextStarter);
+    assert.equal(forGuest.starter, nextStarter);
+
+    const fresh = await winPair.tracker.until(
+      (s) => s.status === 'playing' && s.moveCount === 0,
+      'infinite fresh round'
+    );
+    assert.equal(fresh.size, 'infinite');
+    assert.equal(fresh.board, null);
+    assert.equal(fresh.winLength, 5);
+    assert.deepEqual(fresh.moves, []);
+    assert.deepEqual(fresh.region, { minX: -4, maxX: 4, minY: -4, maxY: 4 });
+    assert.equal(fresh.lastMove, null);
+    assert.equal(fresh.turn, nextStarter);
+    assert.equal(fresh.starter, nextStarter);
+    assert.equal(fresh.maxMoves, 2000);
+    winPair.starter = nextStarter;
+  });
+
+  await test('F5 rejoin restores infinite moves, region, lastMove and turn', async () => {
+    const starter = winPair.starter;
+    const points = [
+      { x: 0, y: 0 },
+      { x: 4, y: 4 },
+      { x: -4, y: 0 },
+      { x: 4, y: -4 },
+      { x: 5, y: 5 },
+      { x: -6, y: 3 },
+    ];
+    const expectedMoves = [];
+    let turn = starter;
+    for (const point of points) {
+      expectedMoves.push({ x: point.x, y: point.y, s: turn });
+      await moveInfinite(socketFor(winPair, turn), point.x, point.y);
+      turn = otherSymbol(turn);
+    }
+
+    const beforeDrop = await winPair.tracker.until(
+      (s) => s.moveCount === 6,
+      'infinite six moves'
+    );
+    assert.deepEqual(beforeDrop.moves, expectedMoves);
+    assert.deepEqual(beforeDrop.region, { minX: -8, maxX: 7, minY: -6, maxY: 7 });
+    assert.deepEqual(beforeDrop.lastMove, { x: -6, y: 3 });
+    assert.equal(beforeDrop.turn, starter);
+
+    winPair.guest.disconnect();
+    await sleep(150);
+
+    const guest2 = await connect(infinite.port);
+    infiniteSockets.push(guest2);
+    const tracker2 = tracker(guest2);
+    const rejoin = await request(guest2, 'room:rejoin', {
+      roomId: winPair.roomId,
+      playerKey: winPair.keyGuest,
+    });
+    assert.equal(rejoin.ok, true, JSON.stringify(rejoin));
+    assert.equal(rejoin.state.size, 'infinite');
+    assert.equal(rejoin.state.board, null);
+    assert.equal(rejoin.state.moveCount, 6);
+    assert.equal(rejoin.state.maxMoves, 2000);
+    assert.deepEqual(rejoin.state.moves, expectedMoves);
+    assert.deepEqual(rejoin.state.region, { minX: -8, maxX: 7, minY: -6, maxY: 7 });
+    assert.deepEqual(rejoin.state.lastMove, { x: -6, y: 3 });
+    assert.equal(rejoin.state.turn, starter);
+
+    const resumed = await tracker2.until((s) => s.status === 'playing', 'infinite resumed');
+    assert.deepEqual(resumed.moves, expectedMoves);
+    winPair.guest = guest2;
+    winPair.tracker = tracker2;
+
+    await moveInfinite(socketFor(winPair, starter), 2, 2);
+    const continued = await tracker2.until(
+      (s) => s.moveCount === 7,
+      'infinite resumed play'
+    );
+    assert.deepEqual(continued.moves[6], { x: 2, y: 2, s: starter });
+    assert.equal(continued.turn, otherSymbol(starter));
+  });
+} finally {
+  for (const socket of infiniteSockets) closeSocket(socket);
+  await stopServer(infinite);
+}
+
+// ---------------------------------------------------------------------------
+// Infinite move-limit suite (small technical limit to force a draw)
+// ---------------------------------------------------------------------------
+const infLimit = await startServer({ INFINITE_MAX_MOVES: '6' });
+const limitSockets = [];
+
+try {
+  await test('infinite technical draw at the move limit locks the board', async () => {
+    const host = await connect(infLimit.port);
+    const guest = await connect(infLimit.port);
+    limitSockets.push(host, guest);
+    const hostTracker = tracker(host);
+
+    const created = await request(host, 'room:create', {
+      name: 'Mèo Giới Hạn',
+      avatar: 'calico',
+      size: 'infinite',
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    assert.equal(created.state.maxMoves, 6);
+
+    const joined = await request(guest, 'room:join', {
+      roomId: created.roomId,
+      name: 'Mèo Đếm',
+      avatar: 'cream',
+    });
+    assert.equal(joined.ok, true, JSON.stringify(joined));
+
+    const playing = await hostTracker.until((s) => s.status === 'playing', 'limit round');
+    const points = [
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 0, y: 2 },
+      { x: 2, y: 2 },
+      { x: -2, y: 0 },
+      { x: -2, y: 2 },
+    ];
+    let turn = playing.turn;
+    for (let step = 0; step < 5; step += 1) {
+      await moveInfinite(turn === 'A' ? host : guest, points[step].x, points[step].y);
+      turn = otherSymbol(turn);
+    }
+
+    const beforeLimit = await hostTracker.until(
+      (s) => s.moveCount === 5,
+      'five infinite moves'
+    );
+    assert.equal(beforeLimit.status, 'playing');
+    assert.equal(beforeLimit.maxMoves, 6);
+
+    const over = nextEvent(host, 'game:over');
+    await moveInfinite(turn === 'A' ? host : guest, points[5].x, points[5].y);
+    const payload = await over;
+    assert.equal(payload.winner, 'draw');
+    assert.equal(payload.reason, 'maxMoves');
+    assert.equal(payload.winLine, null);
+
+    const finished = await hostTracker.until(
+      (s) => s.status === 'finished',
+      'infinite maxMoves draw'
+    );
+    assert.equal(finished.moveCount, 6);
+    assert.equal(finished.maxMoves, 6);
+    assert.equal(finished.score.draw, 1);
+    assert.deepEqual(finished.lastMove, points[5]);
+
+    const afterLimit = await request(turn === 'A' ? host : guest, 'game:move', {
+      x: 3,
+      y: 3,
+    });
+    assert.equal(afterLimit.ok, false);
+    assert.equal(afterLimit.code, 'gameNotPlaying');
+  });
+} finally {
+  for (const socket of limitSockets) closeSocket(socket);
+  await stopServer(infLimit);
+}
+
+// ---------------------------------------------------------------------------
 // Turn-timeout suite (short turn timer)
 // ---------------------------------------------------------------------------
 const timed = await startServer({ TURN_MS: '700' });

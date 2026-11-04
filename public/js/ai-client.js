@@ -2,22 +2,50 @@
  * Cau noi giua giao dien va AI.
  *
  * - Ban 3x3 chay truc tiep (rat nhanh, giu nguyen hanh vi cu).
- * - Ban 4x4 - 8x8 chay trong Web Worker de khong treo giao dien.
+ * - Ban 4x4 - 8x8 va ban vo cuc chay trong Web Worker de khong treo giao dien.
  *   Neu trinh duyet khong ho tro Worker, tu dong chay tren luong chinh.
  * - cancel() huy ket qua dang cho (roi man hinh / doi che do).
  */
-import { chooseMove } from './ai.js';
+import { chooseInfiniteMove, chooseMove } from './ai.js';
 
-function runLocal(params) {
+function cancelledValue(request) {
+  return request?.kind === 'infinite' ? null : -1;
+}
+
+function runLocal(request) {
   try {
-    return chooseMove(params.board.slice(), params.me, params.opponent, params.difficulty, Math.random, {
-      size: params.size,
-      winLength: params.winLength,
-      timeLimit: params.timeLimit,
-      maxDepth: params.maxDepth,
-    });
+    if (request.kind === 'infinite') {
+      const move = chooseInfiniteMove(
+        { moves: request.moves, region: request.region },
+        request.me,
+        request.opponent,
+        request.difficulty,
+        Math.random,
+        {
+          winLength: request.winLength,
+          timeLimit: request.timeLimit,
+          maxDepth: request.maxDepth,
+        }
+      );
+      return move && Number.isInteger(move.x) && Number.isInteger(move.y) ? move : null;
+    }
+
+    const index = chooseMove(
+      request.board.slice(),
+      request.me,
+      request.opponent,
+      request.difficulty,
+      Math.random,
+      {
+        size: request.size,
+        winLength: request.winLength,
+        timeLimit: request.timeLimit,
+        maxDepth: request.maxDepth,
+      }
+    );
+    return Number.isInteger(index) ? index : -1;
   } catch {
-    return -1;
+    return cancelledValue(request);
   }
 }
 
@@ -27,10 +55,10 @@ export function createAIClient() {
   let seq = 0;
   let job = null;
 
-  function settle(index) {
+  function settle(value) {
     const current = job;
     job = null;
-    if (current) current.resolve(index);
+    if (current) current.resolve(value);
   }
 
   function dropWorker() {
@@ -48,7 +76,17 @@ export function createAIClient() {
       worker.onmessage = (event) => {
         const data = event.data || {};
         if (!job || data.id !== job.id) return;
-        settle(Number.isInteger(data.index) ? data.index : -1);
+
+        if (job.request.kind === 'infinite') {
+          const move = data.move;
+          settle(
+            move && Number.isInteger(move.x) && Number.isInteger(move.y)
+              ? { x: move.x, y: move.y }
+              : null
+          );
+        } else {
+          settle(Number.isInteger(data.index) ? data.index : -1);
+        }
       };
       worker.onerror = () => {
         broken = true;
@@ -56,7 +94,7 @@ export function createAIClient() {
         if (job) {
           const current = job;
           job = null;
-          setTimeout(() => current.resolve(runLocal(current.params)), 0);
+          setTimeout(() => current.resolve(runLocal(current.request)), 0);
         }
       };
       return worker;
@@ -70,35 +108,22 @@ export function createAIClient() {
   function cancel() {
     seq += 1;
     dropWorker();
-    settle(-1);
+    const current = job;
+    job = null;
+    if (current) current.resolve(cancelledValue(current.request));
   }
 
-  /**
-   * @param {{board:Array, me:string, opponent:string, difficulty:string,
-   *          size:number, winLength:number, timeLimit?:number, maxDepth?:number}} params
-   * @returns {Promise<number>} chi so o, -1 neu khong tim duoc
-   */
-  function choose(params) {
-    const request = {
-      board: Array.isArray(params.board) ? params.board.slice() : [],
-      me: params.me === 'B' ? 'B' : 'A',
-      opponent: params.opponent === 'B' ? 'B' : 'A',
-      difficulty: params.difficulty || 'medium',
-      size: params.size,
-      winLength: params.winLength,
-      timeLimit: Number.isFinite(params.timeLimit) ? params.timeLimit : 800,
-      maxDepth: params.maxDepth,
-    };
+  function start(request) {
     const id = ++seq;
 
     return new Promise((resolve) => {
       if (job) {
         const previous = job;
         job = null;
-        previous.resolve(-1);
+        previous.resolve(cancelledValue(previous.request));
       }
 
-      if (request.size <= 3) {
+      if (request.kind === 'finite' && Number.isInteger(request.size) && request.size <= 3) {
         resolve(runLocal(request));
         return;
       }
@@ -109,19 +134,9 @@ export function createAIClient() {
         return;
       }
 
-      job = { id, params: request, resolve };
+      job = { id, request, resolve };
       try {
-        active.postMessage({
-          id,
-          board: request.board,
-          me: request.me,
-          opponent: request.opponent,
-          difficulty: request.difficulty,
-          size: request.size,
-          winLength: request.winLength,
-          timeLimit: request.timeLimit,
-          maxDepth: request.maxDepth,
-        });
+        active.postMessage({ id, ...request });
       } catch {
         job = null;
         setTimeout(() => resolve(runLocal(request)), 0);
@@ -129,5 +144,51 @@ export function createAIClient() {
     });
   }
 
-  return { choose, cancel };
+  /**
+   * @param {{board:Array, me:string, opponent:string, difficulty:string,
+   *          size:number, winLength:number, timeLimit?:number, maxDepth?:number}} params
+   * @returns {Promise<number>} chi so o, -1 neu khong tim duoc
+   */
+  function choose(params) {
+    return start({
+      kind: 'finite',
+      board: Array.isArray(params.board) ? params.board.slice() : [],
+      me: params.me === 'B' ? 'B' : 'A',
+      opponent: params.opponent === 'B' ? 'B' : 'A',
+      difficulty: params.difficulty || 'medium',
+      size: params.size,
+      winLength: params.winLength,
+      timeLimit: Number.isFinite(params.timeLimit) ? params.timeLimit : 800,
+      maxDepth: params.maxDepth,
+    });
+  }
+
+  /**
+   * @param {{moves:Array<{x:number,y:number,s:string}>,
+   *          region?:{minX:number,maxX:number,minY:number,maxY:number},
+   *          me:string, opponent:string, difficulty:string,
+   *          winLength?:number, timeLimit?:number, maxDepth?:number}} params
+   * @returns {Promise<{x:number,y:number}|null>}
+   */
+  function chooseInfinite(params) {
+    const moves = Array.isArray(params.moves)
+      ? params.moves
+          .filter((move) => Number.isInteger(move?.x) && Number.isInteger(move?.y))
+          .map((move) => ({ x: move.x, y: move.y, s: move.s === 'B' ? 'B' : 'A' }))
+      : [];
+
+    return start({
+      kind: 'infinite',
+      moves,
+      region: params.region ? { ...params.region } : null,
+      me: params.me === 'B' ? 'B' : 'A',
+      opponent: params.opponent === 'B' ? 'B' : 'A',
+      difficulty: params.difficulty || 'medium',
+      winLength: params.winLength,
+      timeLimit: Number.isFinite(params.timeLimit) ? params.timeLimit : 800,
+      maxDepth: params.maxDepth,
+    });
+  }
+
+  return { choose, chooseInfinite, cancel };
 }

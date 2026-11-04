@@ -1268,6 +1268,161 @@ body:not([data-mode='online']) .turn-timer {
   z-index: 4;
 }
 
+/* --------------------------------------------------------------------------
+   Ban co vo cuc (canvas)
+   -------------------------------------------------------------------------- */
+.infinite-board {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.infinite-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #e9dcc9;
+  border: 3px solid rgba(74, 52, 38, 0.2);
+  border-radius: 30px;
+  box-shadow: inset 0 3px 12px rgba(74, 52, 38, 0.08);
+}
+
+.infinite-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.infinite-canvas:active {
+  cursor: grabbing;
+}
+
+.infinite-canvas:focus-visible {
+  outline: 3px solid var(--orange);
+  outline-offset: -3px;
+  border-radius: 26px;
+}
+
+.infinite-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 3;
+}
+
+.infinite-btn {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-family: var(--font);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+  background: rgba(255, 253, 248, 0.95);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 3px 0 rgba(74, 52, 38, 0.2);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.14s ease, transform 0.14s ease;
+}
+
+.infinite-btn:hover {
+  background: #ffe9c7;
+  transform: translateY(-1px);
+}
+
+.infinite-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(74, 52, 38, 0.2);
+}
+
+.infinite-meta {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100% - 76px);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.infinite-pill {
+  max-width: 100%;
+  padding: 3px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: rgba(255, 253, 248, 0.9);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+.infinite-hint {
+  margin: 6px auto 0;
+  max-width: 100%;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 640px) {
+  .infinite-stage {
+    border-radius: 24px;
+  }
+
+  .infinite-canvas:focus-visible {
+    border-radius: 21px;
+  }
+
+  .infinite-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 1.05rem;
+    border-radius: 10px;
+  }
+
+  .infinite-controls {
+    right: 8px;
+    bottom: 8px;
+    gap: 5px;
+  }
+
+  .infinite-meta {
+    left: 8px;
+    top: 8px;
+    max-width: calc(100% - 62px);
+  }
+
+  .infinite-pill {
+    font-size: 0.64rem;
+    padding: 2px 7px;
+  }
+
+  .infinite-hint {
+    font-size: 0.66rem;
+    padding: 0 4px;
+  }
+}
+
 .yarn-base {
   fill: none;
   stroke: var(--red);

@@ -6,6 +6,7 @@
 const PREFIX = 'mmc.';
 const memory = new Map();
 const SIZES = [3, 4, 5, 6, 7, 8];
+const SCORE_SIZES = [...SIZES, 'infinite'];
 
 let localStore = null;
 try {
@@ -71,7 +72,7 @@ function setJSON(key, value) {
 }
 
 function validSize(size) {
-  return Number.isInteger(size) && SIZES.includes(size);
+  return (Number.isInteger(size) && SIZES.includes(size)) || size === 'infinite';
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +180,7 @@ export function loadScores() {
       : null;
 
   const scores = { ai: {}, local: {} };
-  for (const size of SIZES) {
+  for (const size of SCORE_SIZES) {
     const savedAI = aiRoot[size] || {};
     const savedLocal = localRoot[size] || {};
     scores.ai[size] = {
@@ -214,7 +215,7 @@ export function resetScoresForSize(scores, size) {
 
 export function resetAllScores() {
   const cleared = { ai: {}, local: {} };
-  for (const size of SIZES) {
+  for (const size of SCORE_SIZES) {
     cleared.ai[size] = emptyAISet();
     cleared.local[size] = emptyLocal();
   }

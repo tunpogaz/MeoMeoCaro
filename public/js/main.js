@@ -46,11 +46,33 @@ import {
   updateTimer,
 } from './ui.js';
 import {
+  initInfiniteBoard,
+  startInfiniteSession,
+  stopInfiniteSession,
+  setInfiniteVisible,
+  renderInfinite,
+  resetInfiniteView,
+  focusInfiniteBoard,
+  shakeInfinite,
+  refreshInfiniteText,
+} from './infinite-board.js';
+import {
   BOARD_CONFIGS,
+  INFINITE,
+  INFINITE_SIZE,
+  cellKey,
   createBoard,
+  createInfiniteState,
+  getInfiniteEmptyCells,
   getResult,
+  infiniteResult,
+  isInfiniteSize,
+  isInRegion,
+  infiniteStateFromMoves,
+  isValidBoardSize,
   isValidSize,
   place,
+  placeInfinite,
   otherPlayer,
   winLengthFor,
 } from './game-core.js';
@@ -58,7 +80,7 @@ import { createAIClient } from './ai-client.js';
 import { OnlineClient } from './online.js';
 
 const SCREENS = ['home', 'ai-setup', 'local-setup', 'lobby', 'room', 'game'];
-const BOARD_SIZES = Object.keys(BOARD_CONFIGS).map(Number);
+const BOARD_SIZES = [...Object.keys(BOARD_CONFIGS).map(Number), INFINITE_SIZE];
 const AI_SEARCH_TIME = 800;
 const PIECE_THEME = { A: 'orange', B: 'gray' };
 const DIFFICULTY_THEME = { easy: 'cream', medium: 'gray', hard: 'tabby' };
@@ -83,6 +105,9 @@ const ERROR_KEY_BY_CODE = {
   roomFull: 'roomFull',
   invalidCode: 'invalidCode',
   invalidSize: 'invalidSize',
+  invalidCoord: 'invalidCoord',
+  coordOutsideRegion: 'coordOutsideRegion',
+  moveLimit: 'moveLimit',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -220,21 +245,25 @@ function renderSizeGrid(id) {
   grid.textContent = '';
 
   for (const size of BOARD_SIZES) {
+    const infinite = isInfiniteSize(size);
     const need = winLengthFor(size);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'size-btn';
     button.dataset.size = String(size);
     button.setAttribute('aria-pressed', 'false');
-    button.setAttribute('aria-label', t('sizeAria', { size, n: need }));
+    button.setAttribute(
+      'aria-label',
+      infinite ? t('infSizeAria') : t('sizeAria', { size, n: need })
+    );
 
     const number = document.createElement('span');
     number.className = 'size-num';
-    number.textContent = `${size}×${size}`;
+    number.textContent = infinite ? '∞' : `${size}×${size}`;
 
     const rule = document.createElement('small');
     rule.className = 'size-rule';
-    rule.textContent = t('sizeRuleShort', { n: need });
+    rule.textContent = infinite ? t('infRuleTiny') : t('sizeRuleShort', { n: need });
 
     button.append(number, rule);
     button.addEventListener('click', () => selectBoardSize(size));
@@ -243,7 +272,7 @@ function renderSizeGrid(id) {
 }
 
 function selectBoardSize(size) {
-  if (!isValidSize(size)) {
+  if (!isValidBoardSize(size)) {
     toast(t('invalidSize'), 'error', 2200);
     return;
   }
@@ -256,14 +285,17 @@ function selectBoardSize(size) {
 function updateSizePickers() {
   const size = state.settings.boardSize;
   const need = winLengthFor(size);
+  const ruleText = isInfiniteSize(size)
+    ? t('infRuleShort')
+    : t('winRuleShort', { size, n: need });
 
   document.querySelectorAll('.size-btn').forEach((button) => {
-    button.setAttribute('aria-pressed', String(Number(button.dataset.size) === size));
+    button.setAttribute('aria-pressed', String(button.dataset.size === String(size)));
   });
 
   for (const id of ['ai-rule', 'local-rule', 'lobby-rule']) {
     const el = $(id);
-    if (el) el.textContent = t('winRuleShort', { size, n: need });
+    if (el) el.textContent = ruleText;
   }
 }
 
@@ -604,7 +636,7 @@ function expressionForFinished(game, symbol) {
 function resultTextForLocal() {
   const game = state.game;
   if (!game) return '';
-  if (game.draw) return t('drawTitle');
+  if (game.draw) return game.limit ? t('maxMovesTitle') : t('drawTitle');
   return t('winTitle', { name: displayName(game.winner) });
 }
 
@@ -639,12 +671,23 @@ function actionsForLocal() {
 
 function enterGameScreen(mode, size) {
   cancelAiTimer();
+  const infinite = isInfiniteSize(size);
   setMode(mode);
-  setBoardSize(size);
+  if (infinite) {
+    setBoardSize(3);
+    setInfiniteVisible(true);
+    startInfiniteSession();
+  } else {
+    setInfiniteVisible(false);
+    stopInfiniteSession();
+    setBoardSize(size);
+  }
   updateModeLabel();
   updateSoundButton();
-  setBoardLabel(t('boardLabel', { size }));
-  $('game-rule').textContent = t('winRule', { n: winLengthFor(size) });
+  if (!infinite) setBoardLabel(t('boardLabel', { size }));
+  $('game-rule').textContent = infinite
+    ? t('infRuleFull')
+    : t('winRule', { n: winLengthFor(size) });
   $('emote-bar').hidden = mode !== 'online';
   $('game-record').hidden = true;
   $('result-card').hidden = true;
@@ -656,7 +699,8 @@ function enterGameScreen(mode, size) {
   setStatus('', '');
   setBanner('');
   showScreen('game');
-  resetBoardFocus();
+  if (infinite) resetInfiniteView();
+  else resetBoardFocus();
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +718,8 @@ function cancelAiTimer() {
 
 function exitLocalGame() {
   cancelAiTimer();
+  stopInfiniteSession();
+  setInfiniteVisible(false);
   state.game = null;
   clearWinLine();
   hideResult();
@@ -685,6 +731,7 @@ function startAIGame() {
   cancelAiTimer();
   state.game = null;
   const size = state.settings.boardSize;
+  const infinite = isInfiniteSize(size);
   const first =
     state.ai.firstChoice === 'random'
       ? Math.random() < 0.5
@@ -695,21 +742,23 @@ function startAIGame() {
         : 'B';
 
   state.game = {
+    ...(infinite ? createInfiniteState() : { board: createBoard(size) }),
     size,
     winLength: winLengthFor(size),
-    board: createBoard(size),
     turn: first,
     starter: first,
     finished: false,
     winner: null,
     winLine: null,
     draw: false,
+    limit: false,
     lastMove: null,
   };
 
   enterGameScreen('ai', size);
   renderLocalGame();
-  focusFirstCell();
+  if (infinite) focusInfiniteBoard();
+  else focusFirstCell();
   audio.play('join');
 
   if (first === 'B') scheduleAIMove();
@@ -717,30 +766,37 @@ function startAIGame() {
 
 function startLocalGame(starter = 'A', size = state.settings.boardSize) {
   cancelAiTimer();
-  const safeSize = isValidSize(size) ? size : state.settings.boardSize;
+  const safeSize = isValidBoardSize(size) ? size : state.settings.boardSize;
+  const infinite = isInfiniteSize(safeSize);
   const first = starter === 'B' ? 'B' : 'A';
   state.game = {
+    ...(infinite ? createInfiniteState() : { board: createBoard(safeSize) }),
     size: safeSize,
     winLength: winLengthFor(safeSize),
-    board: createBoard(safeSize),
     turn: first,
     starter: first,
     finished: false,
     winner: null,
     winLine: null,
     draw: false,
+    limit: false,
     lastMove: null,
   };
 
   enterGameScreen('local', safeSize);
   renderLocalGame();
-  focusFirstCell();
+  if (infinite) focusInfiniteBoard();
+  else focusFirstCell();
   audio.play('join');
 }
 
 function renderLocalGame() {
   const game = state.game;
   if (!game) return;
+  if (isInfiniteSize(game.size)) {
+    renderInfiniteLocalGame();
+    return;
+  }
   const aiMode = state.mode === 'ai';
   const locked =
     game.finished || (aiMode && (state.ai.thinking || game.turn !== 'A'));
@@ -778,9 +834,77 @@ function renderLocalGame() {
   }
 }
 
-function onLocalCell(index) {
+function renderInfiniteLocalGame() {
+  const game = state.game;
+  if (!game) return;
+  const aiMode = state.mode === 'ai';
+  const locked =
+    game.finished || (aiMode && (state.ai.thinking || game.turn !== 'A'));
+  const preview = locked ? null : aiMode ? 'A' : game.turn;
+
+  setInfiniteVisible(true);
+  renderInfinite({
+    cells: game.cells,
+    moves: game.moves,
+    region: game.region,
+    lastMove: game.lastMove,
+    winLine: game.winLine,
+    locked,
+    preview,
+    maxMoves: INFINITE.maxMoves,
+    drawLimit: game.limit,
+    expressionFor: (symbol) => expressionForFinished(game, symbol),
+  });
+  refreshInfiniteText();
+  $('game-rule').textContent = t('infRuleFull');
+  setCardsForLocal();
+  updateRecordLocal();
+  updateModeLabel();
+
+  if (game.finished) {
+    setStatus('', '');
+    showResult(resultTextForLocal(), actionsForLocal());
+    return;
+  }
+
+  hideResult();
+  if (aiMode) {
+    setStatus(
+      game.turn === 'B' ? t('aiThinking', { name: t('aiName') }) : t('yourTurn'),
+      ''
+    );
+  } else {
+    setStatus(t('turnLocal', { name: displayName(game.turn) }), '');
+  }
+}
+
+function onLocalCell(index, y) {
   const game = state.game;
   if (!game || game.finished) return;
+
+  if (isInfiniteSize(game.size)) {
+    const x = index;
+    const key = cellKey(x, y);
+    if (game.cells.has(key)) {
+      shakeInfinite(x, y);
+      audio.play('error');
+      toast(t('cellTaken'), 'error', 1600);
+      return;
+    }
+
+    if (state.mode === 'ai') {
+      if (state.ai.thinking || game.turn !== 'A') {
+        shakeInfinite(x, y);
+        audio.play('error');
+        toast(t('notYourTurn'), 'error', 1600);
+        return;
+      }
+      playLocalMove('A', x, y);
+    } else {
+      playLocalMove(game.turn, x, y);
+    }
+    return;
+  }
 
   if (game.board[index]) {
     shakeCell(index);
@@ -802,9 +926,28 @@ function onLocalCell(index) {
   }
 }
 
-function playLocalMove(symbol, index) {
+function playLocalMove(symbol, index, y) {
   const game = state.game;
   if (!game || game.finished || game.turn !== symbol) return false;
+
+  if (isInfiniteSize(game.size)) {
+    if (!placeInfinite(game, index, y, symbol)) return false;
+    game.lastMove = { x: index, y };
+
+    audio.play('meow');
+    const result = infiniteResult(game);
+    if (result.finished) {
+      game.limit = result.limit === true;
+      finishLocalRound(result);
+      return true;
+    }
+
+    game.turn = otherPlayer(symbol);
+    renderLocalGame();
+    if (state.mode === 'ai' && game.turn === 'B') scheduleAIMove();
+    return true;
+  }
+
   if (!place(game.board, index, symbol, game.size)) return false;
   game.lastMove = index;
 
@@ -831,6 +974,7 @@ function finishLocalRound(result) {
   game.winner = result.winner;
   game.winLine = result.line;
   game.draw = result.draw === true;
+  if (result.limit === true) game.limit = true;
 
   cancelAiTimer();
 
@@ -889,6 +1033,48 @@ function scheduleAIMove() {
       current.turn !== 'B'
     ) {
       state.ai.thinking = false;
+      return;
+    }
+
+    if (isInfiniteSize(current.size)) {
+      let move = await aiClient.chooseInfinite({
+        moves: current.moves.map((item) => ({ ...item })),
+        region: { ...current.region },
+        me: 'B',
+        opponent: 'A',
+        difficulty: state.ai.difficulty,
+        winLength: current.winLength,
+        timeLimit: AI_SEARCH_TIME,
+      });
+
+      if (token !== state.ai.token) return;
+      const latest = state.game;
+      if (
+        !latest ||
+        latest !== current ||
+        state.mode !== 'ai' ||
+        latest.finished ||
+        latest.turn !== 'B'
+      ) {
+        state.ai.thinking = false;
+        return;
+      }
+
+      state.ai.thinking = false;
+      const valid =
+        move &&
+        Number.isInteger(move.x) &&
+        Number.isInteger(move.y) &&
+        isInRegion(latest.region, move.x, move.y) &&
+        !latest.cells.has(cellKey(move.x, move.y));
+      if (!valid) {
+        const empties = getInfiniteEmptyCells(latest.cells, latest.region);
+        move = empties.length
+          ? empties[Math.floor(Math.random() * empties.length)]
+          : null;
+      }
+      if (move) playLocalMove('B', move.x, move.y);
+      else renderLocalGame();
       return;
     }
 
@@ -1083,7 +1269,9 @@ function applyOnlineState(next, options = {}) {
     syncOnlineView();
   }
 
-  const filled = next.board.reduce((count, cell) => count + (cell ? 1 : 0), 0);
+  const filled = isInfiniteSize(next.size)
+    ? Number(next.moveCount ?? next.moves?.length ?? 0)
+    : (next.board || []).reduce((count, cell) => count + (cell ? 1 : 0), 0);
   if (
     !options.initial &&
     state.online.lastBoardCount !== null &&
@@ -1107,15 +1295,26 @@ function enterOnlineGameScreen() {
   cancelAiTimer();
   state.game = null;
   const room = state.online.roomState;
-  const size = isValidSize(room?.size) ? room.size : 3;
+  const size = isValidBoardSize(room?.size) ? room.size : 3;
+  const infinite = isInfiniteSize(size);
   setMode('online');
-  setBoardSize(size);
+  if (infinite) {
+    setBoardSize(3);
+    setInfiniteVisible(true);
+    startInfiniteSession();
+  } else {
+    setInfiniteVisible(false);
+    stopInfiniteSession();
+    setBoardSize(size);
+  }
   updateModeLabel();
   updateSoundButton();
-  setBoardLabel(t('boardLabel', { size }));
-  $('game-rule').textContent = t('winRule', {
-    n: room?.winLength || winLengthFor(size),
-  });
+  if (!infinite) setBoardLabel(t('boardLabel', { size }));
+  $('game-rule').textContent = infinite
+    ? t('infRuleFull')
+    : t('winRule', {
+        n: room?.winLength || winLengthFor(size),
+      });
   $('emote-bar').hidden = false;
   $('game-record').hidden = true;
   $('result-card').hidden = true;
@@ -1127,7 +1326,8 @@ function enterOnlineGameScreen() {
   setStatus('', '');
   setBanner('');
   showScreen('game');
-  resetBoardFocus();
+  if (infinite) resetInfiniteView();
+  else resetBoardFocus();
 }
 
 function syncOnlineView() {
@@ -1170,24 +1370,47 @@ function syncOnlineView() {
 
   const locked =
     !playing || next.turn !== youSymbol || state.online.pendingMove !== null;
-  const size = isValidSize(next.size) ? next.size : 3;
-  renderBoard(next.board, {
-    locked,
-    preview: playing && next.turn === youSymbol ? youSymbol : null,
-    expressionFor: (symbol) => {
-      if (!finished) return 'normal';
-      if (draw) return 'sleep';
-      return symbol === winner ? 'win' : 'lose';
-    },
-    lastMove: next.lastMove,
-  });
-  setBoardLabel(t('boardLabel', { size }));
-  $('game-rule').textContent = t('winRule', {
-    n: next.winLength || winLengthFor(size),
-  });
+  const infinite = isInfiniteSize(next.size);
+  const size = isValidBoardSize(next.size) ? next.size : 3;
+  if (infinite) {
+    renderInfinite({
+      moves: Array.isArray(next.moves) ? next.moves : [],
+      region: next.region,
+      lastMove: next.lastMove,
+      winLine: next.winLine,
+      locked,
+      preview: playing && next.turn === youSymbol ? youSymbol : null,
+      maxMoves: next.maxMoves,
+      drawLimit: state.online.finishReason === 'maxMoves' || isInfiniteLimitDraw(next),
+      expressionFor: (symbol) => {
+        if (!finished) return 'normal';
+        if (draw) return 'sleep';
+        return symbol === winner ? 'win' : 'lose';
+      },
+    });
+    refreshInfiniteText();
+    $('game-rule').textContent = t('infRuleFull');
+  } else {
+    renderBoard(next.board, {
+      locked,
+      preview: playing && next.turn === youSymbol ? youSymbol : null,
+      expressionFor: (symbol) => {
+        if (!finished) return 'normal';
+        if (draw) return 'sleep';
+        return symbol === winner ? 'win' : 'lose';
+      },
+      lastMove: next.lastMove,
+    });
+    setBoardLabel(t('boardLabel', { size }));
+    $('game-rule').textContent = t('winRule', {
+      n: next.winLength || winLengthFor(size),
+    });
+  }
 
-  if (finished && next.winLine) showWinLine(next.winLine);
-  else clearWinLine();
+  if (!infinite) {
+    if (finished && next.winLine) showWinLine(next.winLine);
+    else clearWinLine();
+  }
 
   updateModeLabel();
 
@@ -1210,9 +1433,19 @@ function syncOnlineView() {
   }
 }
 
+function isInfiniteLimitDraw(roomState) {
+  if (!roomState || roomState.winner !== 'draw') return false;
+  const max = Number(roomState.maxMoves);
+  const count = Number(roomState.moveCount ?? roomState.moves?.length ?? 0);
+  return max > 0 && count >= max;
+}
+
 function onlineResultText() {
   const next = state.online.roomState;
   if (!next) return '';
+  if (state.online.finishReason === 'maxMoves' || isInfiniteLimitDraw(next)) {
+    return t('maxMovesTitle');
+  }
   if (next.winner === 'draw') return t('drawTitle');
   const name = displayName(next.winner);
   if (state.online.finishReason === 'abandon') return t('abandonTitle', { name });
@@ -1309,12 +1542,62 @@ function onOnlineCell(index) {
     });
 }
 
+function onOnlineInfiniteCell(x, y) {
+  const next = state.online.roomState;
+  if (!next || next.status !== 'playing') return;
+  if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+  if (state.online.pendingMove !== null) return;
+
+  if (next.turn !== state.online.youSymbol) {
+    shakeInfinite(x, y);
+    audio.play('error');
+    toast(t('notYourTurn'), 'error', 1600);
+    return;
+  }
+
+  if (!isInRegion(next.region, x, y)) {
+    shakeInfinite(x, y);
+    audio.play('error');
+    toast(t('coordOutsideRegion'), 'error', 1800);
+    return;
+  }
+
+  const built = infiniteStateFromMoves(next.moves);
+  if (built.cells.has(cellKey(x, y))) {
+    shakeInfinite(x, y);
+    audio.play('error');
+    toast(t('cellTaken'), 'error', 1600);
+    return;
+  }
+
+  state.online.pendingMove = { x, y };
+  syncOnlineView();
+
+  net
+    .move(state.online.roomId, { x, y })
+    .then((response) => {
+      if (!response?.ok) {
+        state.online.pendingMove = null;
+        shakeInfinite(x, y);
+        audio.play('error');
+        showServerError(response?.code, response?.error);
+        syncOnlineView();
+      }
+    })
+    .catch(() => {
+      state.online.pendingMove = null;
+      syncOnlineView();
+      toast(t('genericError'), 'error');
+    });
+}
+
 function resetOnlineRoundState() {
   state.online.finishReason = null;
   state.online.celebratedKey = null;
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
   state.online.pendingMove = null;
+  if (isInfiniteSize(state.online.roomState?.size)) resetInfiniteView();
   hideResult();
   clearWinLine();
   clearEmoteBubbles();
@@ -1365,7 +1648,10 @@ function handleGameOver(payload) {
   if (!next) return;
 
   state.online.finishReason = payload?.reason || 'win';
-  const key = `${next.id}:${next.board.join('')}:${next.winner}`;
+  const filled = isInfiniteSize(next.size)
+    ? Number(next.moveCount ?? next.moves?.length ?? 0)
+    : (next.board || []).join('');
+  const key = `${next.id}:${filled}:${next.winner}`;
 
   if (state.online.celebratedKey !== key) {
     state.online.celebratedKey = key;
@@ -1518,6 +1804,8 @@ function endOnlineSession({ clearSaved = true } = {}) {
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
   stopOnlineTimer();
+  stopInfiniteSession();
+  setInfiniteVisible(false);
   updateTimer(null);
   clearWinLine();
   hideResult();
@@ -1552,7 +1840,9 @@ function updateRoomInfo() {
 
   const room = state.online.roomState;
   const info = $('room-size-info');
-  if (room && isValidSize(room.size)) {
+  if (room && isInfiniteSize(room.size)) {
+    info.textContent = t('roomSizeInfoInfinite');
+  } else if (room && isValidSize(room.size)) {
     info.textContent = t('roomSizeInfo', {
       size: room.size,
       n: room.winLength || winLengthFor(room.size),
@@ -1616,8 +1906,9 @@ function updateOnlineTimer(next) {
   } else {
     stopOnlineTimer();
     $('turn-timer').hidden = true;
-    const size = isValidSize(next.size) ? next.size : 3;
-    updateTimer(0, next.turnMs || (size >= 5 ? 45000 : 30000));
+    const fallback =
+      next.size >= 5 || isInfiniteSize(next.size) ? 45000 : 30000;
+    updateTimer(0, next.turnMs || fallback);
   }
 }
 
@@ -1704,6 +1995,7 @@ function applyLanguage(lang) {
   renderAllSizeGrids();
   renderScoreSizeOptions();
   renderScores();
+  refreshInfiniteText();
   updateSoundButton();
 
   if (state.screen === 'lobby') clearLobbyStatus();
@@ -1761,7 +2053,9 @@ function renderScoreSizeOptions() {
   for (const size of BOARD_SIZES) {
     const option = document.createElement('option');
     option.value = String(size);
-    option.textContent = `${size}×${size} · ${t('sizeRuleShort', { n: winLengthFor(size) })}`;
+    option.textContent = isInfiniteSize(size)
+      ? t('scoresInfinite')
+      : `${size}×${size} · ${t('sizeRuleShort', { n: winLengthFor(size) })}`;
     select.appendChild(option);
   }
   select.value = String(state.scoreViewSize);
@@ -1772,7 +2066,7 @@ function renderScores() {
   if (!body) return;
   body.textContent = '';
 
-  const size = isValidSize(state.scoreViewSize) ? state.scoreViewSize : 3;
+  const size = isValidBoardSize(state.scoreViewSize) ? state.scoreViewSize : 3;
   const aiBucket = state.scores.ai[size] || {};
   const localBucket = state.scores.local[size] || { A: 0, B: 0, draw: 0 };
 
@@ -1809,7 +2103,9 @@ function renderScores() {
 
   const heading = document.createElement('p');
   heading.className = 'scores-size-note';
-  heading.textContent = t('winRuleShort', { size, n: winLengthFor(size) });
+  heading.textContent = isInfiniteSize(size)
+    ? t('infRuleSize')
+    : t('winRuleShort', { size, n: winLengthFor(size) });
 
   body.append(
     heading,
@@ -1818,7 +2114,11 @@ function renderScores() {
   );
 
   const reset = $('btn-reset-scores');
-  if (reset) reset.textContent = t('resetScoresSize', { size });
+  if (reset) {
+    reset.textContent = isInfiniteSize(size)
+      ? t('resetScoresInfinite')
+      : t('resetScoresSize', { size });
+  }
 }
 
 function openDialog(id) {
@@ -1890,9 +2190,13 @@ async function shareRoomLink() {
 // ---------------------------------------------------------------------------
 // Xu ly o co
 // ---------------------------------------------------------------------------
-function handleCell(index) {
-  if (state.mode === 'online') onOnlineCell(index);
-  else if (state.mode === 'ai' || state.mode === 'local') onLocalCell(index);
+function handleCell(index, y) {
+  if (state.mode === 'online') {
+    if (isInfiniteSize(state.online.roomState?.size)) onOnlineInfiniteCell(index, y);
+    else onOnlineCell(index);
+    return;
+  }
+  if (state.mode === 'ai' || state.mode === 'local') onLocalCell(index, y);
 }
 
 // ---------------------------------------------------------------------------
@@ -2040,22 +2344,31 @@ function setupDialogs() {
   });
 
   $('btn-reset-scores').addEventListener('click', () => {
-    const size = isValidSize(state.scoreViewSize) ? state.scoreViewSize : 3;
-    if (!window.confirm(t('resetConfirmSize', { size }))) return;
+    const size = isValidBoardSize(state.scoreViewSize) ? state.scoreViewSize : 3;
+    const infinite = isInfiniteSize(size);
+    const confirmText = infinite
+      ? t('resetConfirmInfinite')
+      : t('resetConfirmSize', { size });
+    if (!window.confirm(confirmText)) return;
     state.scores = resetScoresForSize(state.scores, size);
     renderScores();
     if (state.screen === 'game' && state.game && state.game.size === size) {
       setCardsForLocal();
       updateRecordLocal();
     }
-    toast(t('resetDoneSize', { size }), 'success', 2200);
+    toast(
+      infinite ? t('resetDoneInfinite') : t('resetDoneSize', { size }),
+      'success',
+      2200
+    );
   });
 
   const scoresSize = $('scores-size');
   if (scoresSize) {
     scoresSize.addEventListener('change', (event) => {
-      const next = Number(event.target.value);
-      state.scoreViewSize = isValidSize(next) ? next : 3;
+      const raw = event.target.value;
+      const next = raw === INFINITE_SIZE ? INFINITE_SIZE : Number(raw);
+      state.scoreViewSize = isValidBoardSize(next) ? next : 3;
       renderScores();
     });
   }
@@ -2150,6 +2463,13 @@ function init() {
       if (!value) return t('cellEmpty', { row, col });
       return t('cellTakenName', { row, col, name: displayName(value) });
     },
+    onCell: handleCell,
+  });
+
+  initInfiniteBoard({
+    catFor: (symbol, expression) =>
+      catFace(PIECE_THEME[symbol] || 'orange', expression),
+    nameFor: displayName,
     onCell: handleCell,
   });
 

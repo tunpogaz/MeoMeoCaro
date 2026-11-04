@@ -1,6 +1,6 @@
 # Meo Meo Caro
 
-Game cờ ca-rô (Tic Tac Toe) chủ đề mèo với bàn **3×3 đến 8×8**, chơi được theo ba cách:
+Game cờ ca-rô (Tic Tac Toe) chủ đề mèo với bàn **3×3 đến 8×8** và **bàn ∞ vô cực tự mở rộng**, chơi được theo ba cách:
 
 - **Đấu với máy** — 3 độ khó, chọn cỡ bàn, chơi hoàn toàn offline sau lần tải đầu.
 - **2 người cùng máy** — chung một thiết bị, chọn cỡ bàn rồi luân phiên đánh.
@@ -15,14 +15,14 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Nhóm | Chi tiết |
 | --- | --- |
 | Chế độ chơi | AI (Mèo con / Mèo trưởng thành / Mèo thông thái), 2 người cùng máy, online theo phòng |
-| Cỡ bàn | 3×3, 4×4, 5×5, 6×6, 7×7, 8×8. Luật thắng: 3 quân (3×3), 4 quân (4×4), 5 quân (5×5 trở lên); chuỗi dài hơn vẫn thắng |
-| AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → chấm điểm chuỗi + ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax + alpha-beta có giới hạn thời gian, chỉ bàn 3×3 là hoàn hảo |
-| Bàn cờ | Lưới N×N dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo |
-| Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang kể cả 8×8 trên màn 320px |
+| Cỡ bàn | 3×3, 4×4, 5×5, 6×6, 7×7, 8×8 và **∞ vô cực**. Luật thắng: 3 quân (3×3), 4 quân (4×4), 5 quân (5×5 trở lên và ∞); chuỗi dài hơn vẫn thắng. Bàn ∞ dùng toạ độ nguyên (có số âm), vùng chơi ban đầu 9×9 quanh (0,0), tự mở rộng 2 ô quanh quân xa nhất và không bao giờ co lại; hòa khi chạm giới hạn kỹ thuật 2000 nước |
+| AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → chấm điểm chuỗi + ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax + alpha-beta có giới hạn thời gian, chỉ bàn 3×3 là hoàn hảo. Bàn ∞ dùng danh sách ô gần quân, iterative deepening sâu 3–4 trong Web Worker (~800ms), trả nước hợp lệ kể cả khi hết thời gian |
+| Bàn cờ | Lưới N×N dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo. Bàn ∞ vẽ bằng Canvas có ảo hoá ô, kéo để di chuyển, cuộn/chụm để thu phóng, nút ± / về giữa / tới nước vừa đánh, mũi tên chỉ nước ngoài màn hình và hoạt ảnh mở rộng vùng |
+| Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang kể cả 8×8 trên màn 320px; bàn ∞ dùng `touch-action: none` để chạm/kéo/chụm không cuộn trang, có nhãn toạ độ, tổng số nước và thông báo cho trình đọc màn hình |
 | Cài đặt | Bật/tắt âm thanh, nhạc nền, giảm chuyển động; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
-| Lưu trữ | localStorage: hồ sơ, cài đặt, bảng điểm **riêng theo từng cỡ bàn** cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3 |
-| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn, đồng hồ 30 giây/lượt (5×5 trở lên: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý |
-| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker), cài lên màn hình chính, chơi AI khi mất mạng |
+| Lưu trữ | localStorage: hồ sơ, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3 |
+| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (gồm ∞), đồng hồ 30 giây/lượt (5×5 trở lên và ∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước |
+| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker và module bàn ∞, cache v4), cài lên màn hình chính, chơi AI khi mất mạng |
 | Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ |
 
 ---
@@ -47,7 +47,7 @@ meo-meo-caro/
 ├── public/
 │   ├── index.html            # 6 màn hình (có bước chọn cỡ bàn), 3 dialog, toast, banner
 │   ├── manifest.json         # PWA manifest
-│   ├── sw.js                 # service worker: app shell + offline AI (cache v3)
+│   ├── sw.js                 # service worker: app shell + offline AI (cache v4)
 │   ├── css/
 │   │   └── style.css         # giao diện động N×N, responsive, reduced-motion
 │   ├── assets/
@@ -58,18 +58,19 @@ meo-meo-caro/
 │   │   └── icon-512.png
 │   └── js/
 │       ├── main.js           # bộ điều khiển trung tâm (điều hướng, ván chơi, online)
-│       ├── game-core.js      # cấu hình cỡ bàn, bàn cờ, luật thắng/thua/hòa
-│       ├── ai.js             # AI 3 độ khó cho 3×3–8×8 (minimax + alpha-beta)
-│       ├── ai-worker.js      # Web Worker chạy AI bàn lớn, tránh đơ giao diện
+│       ├── game-core.js      # cấu hình cỡ bàn, bàn cờ, luật thắng/thua/hòa, bàn ∞ (Map thưa, vùng mở rộng)
+│       ├── ai.js             # AI 3 độ khó cho 3×3–8×8 và bàn ∞ (minimax + alpha-beta)
+│       ├── ai-worker.js      # Web Worker chạy AI bàn lớn và bàn ∞, tránh đơ giao diện
 │       ├── ai-client.js      # gọi worker, timeout/hủy, fallback main thread
+│       ├── infinite-board.js # Canvas ảo hoá cho bàn ∞: kéo/chụm/thu phóng, vùng, thắng, accessibility
 │       ├── online.js         # bọc Socket.IO phía client
 │       ├── ui.js             # render bàn N×N, hiệu ứng, toast, timer, confetti
 │       ├── audio.js          # âm thanh tổng hợp Web Audio
 │       ├── storage.js        # localStorage an toàn + fallback bộ nhớ
 │       └── i18n.js           # chuỗi tiếng Việt / tiếng Anh
 └── test/
-    ├── ai.test.mjs           # test luật chơi 3×3–8×8, AI các cỡ bàn, duyệt cạn AI Khó 3×3
-    └── server.test.mjs       # test tích hợp Socket.IO với server thật (gồm 4×4, 8×8)
+    ├── ai.test.mjs           # test luật chơi 3×3–8×8 và ∞, AI các cỡ bàn, duyệt cạn AI Khó 3×3
+    └── server.test.mjs       # test tích hợp Socket.IO với server thật (4×4, 8×8, ∞)
 ```
 
 ---
@@ -99,20 +100,22 @@ npm run dev
 | `CORS_ORIGIN` | (trống) | Danh sách origin được phép, phân cách bằng dấu phẩy. Chỉ cần đặt khi client và server khác origin |
 | `ROOM_TTL_MS` | `900000` | Thời gian phòng không hoạt động trước khi bị dọn (15 phút) |
 | `RECONNECT_GRACE_MS` | `60000` | Thời gian giữ chỗ khi người chơi mất kết nối |
-| `TURN_MS` | (trống) | Ghi đè thời gian mỗi lượt cho test. Khi để trống: 30 giây cho 3×3–4×4, 45 giây cho 5×5–8×8 |
+| `TURN_MS` | (trống) | Ghi đè thời gian mỗi lượt cho test. Khi để trống: 30 giây cho 3×3–4×4, 45 giây cho 5×5–8×8 và ∞ |
+| `INFINITE_MAX_MOVES` | `2000` | Giới hạn kỹ thuật số nước của bàn ∞ trước khi hòa; chủ yếu dùng cho test |
 
-`ROOM_TTL_MS`, `RECONNECT_GRACE_MS` và `TURN_MS` chủ yếu dùng cho test; khi chạy thật không cần đặt.
+`ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS` và `INFINITE_MAX_MOVES` chủ yếu dùng cho test; khi chạy thật không cần đặt.
 
 ---
 
 ## Chơi online
 
 1. Mở `http://localhost:3000`, nhập tên, chọn avatar.
-2. Chọn **Chơi online** → chọn cỡ bàn → **Tạo phòng**. Nhận mã 5 ký tự; cỡ bàn và luật thắng hiển thị ở phòng chờ.
+2. Chọn **Chơi online** → chọn cỡ bàn (kể cả **∞**) → **Tạo phòng**. Nhận mã 5 ký tự; cỡ bàn và luật thắng hiển thị ở phòng chờ.
 3. Gửi mã hoặc bấm **Sao chép link** / **Chia sẻ** cho người thứ hai.
 4. Người thứ hai mở link (hoặc nhập mã ở mục **Vào phòng**). Họ thấy đúng cỡ bàn của phòng; ai đi trước được chọn ngẫu nhiên.
-5. Mỗi lượt có 30 giây (5×5 trở lên: 45 giây); hết giờ máy chủ tự đánh một ô trống ngẫu nhiên, không xử thua, và phát sự kiện `game:timeout`.
+5. Mỗi lượt có 30 giây (5×5 trở lên và ∞: 45 giây); hết giờ máy chủ tự đánh một ô trống ngẫu nhiên, không xử thua, và phát sự kiện `game:timeout`.
 6. Kết thúc ván, cả hai có thể bấm **Đấu lại**; chỉ khi cả hai đồng ý ván mới bắt đầu, giữ nguyên cỡ bàn và đổi người đi trước.
+7. Với bàn ∞, mỗi nước gửi `game:move` dạng `{roomId, x, y}` (toạ độ nguyên, có thể âm). Máy chủ từ chối toạ độ không nguyên, ngoài vùng hiện tại, ô đã có quân, sai lượt hoặc ván đã kết thúc. F5 khôi phục toàn bộ danh sách nước đi và vùng chơi.
 
 ### Test online trên cùng máy tính
 
@@ -160,7 +163,7 @@ Mở URL công khai mà công cụ in ra. Giữ nguyên một origin cho cả ha
 
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
 - Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online cần server.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v3`) để người dùng nhận bản mới. Cache v3 đã gồm `ai-worker.js` và `ai-client.js`.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v4`) để người dùng nhận bản mới. Cache v4 đã gồm `ai-worker.js`, `ai-client.js` và `infinite-board.js`.
 
 ---
 
@@ -172,12 +175,12 @@ npm run test:ai
 npm run test:server
 ```
 
-- `test/ai.test.mjs`: kiểm tra cấu hình cỡ bàn, thắng đủ 4 hướng ở góc/cạnh/giữa trên 3×3–8×8, chuỗi ngắn không thắng, không vòng qua cuối hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó/cỡ bàn chỉ trả ô trống, 72 ván AI tự chơi, thắng/chặn ngay của AI bàn lớn, và giới hạn thời gian của AI Khó bàn lớn.
-- `test/server.test.mjs`: khởi động server thật ở cổng ngẫu nhiên và kiểm tra tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; thêm **cỡ bàn 4×4/8×8**: mặc định 3×3, từ chối cỡ sai, đúng luật thắng 4/5 quân, thắng 4×4, hòa kín bàn 4×4, đấu lại giữ cỡ bàn, F5 rejoin giữ `size`/`board`/`lastMove`, timer 30s/45s và timeout 8×8 không xử thua.
+- `test/ai.test.mjs` (31 test): kiểm tra cấu hình cỡ bàn, thắng đủ 4 hướng ở góc/cạnh/giữa trên 3×3–8×8, chuỗi ngắn không thắng, không vòng qua cuối hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó/cỡ bàn chỉ trả ô trống, 72 ván AI tự chơi, thắng/chặn ngay của AI bàn lớn, và giới hạn thời gian của AI Khó bàn lớn. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn, giới hạn thời gian và AI tự đánh nhau luôn hợp lệ.
+- `test/server.test.mjs` (29 test): khởi động server thật ở cổng ngẫu nhiên và kiểm tra tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; thêm **cỡ bàn 4×4/8×8**: mặc định 3×3, từ chối cỡ sai, đúng luật thắng 4/5 quân, thắng 4×4, hòa kín bàn 4×4, đấu lại giữ cỡ bàn, F5 rejoin giữ `size`/`board`/`lastMove`, timer 30s/45s và timeout 8×8 không xử thua. Phần ∞ kiểm tra `size: 'infinite'`, vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng với toạ độ âm, F5 khôi phục 6 nước + vùng, đấu lại reset ván, và hòa khi chạm `INFINITE_MAX_MOVES`.
 
 ---
 
-## 32 kịch bản kiểm thử thủ công
+## 38 kịch bản kiểm thử thủ công
 
 | # | Kịch bản | Cách làm | Kết quả mong đợi |
 | --- | --- | --- | --- |
@@ -213,6 +216,12 @@ npm run test:server
 | 30 | Online 4×4 / 8×8 | Chơi thắng, hòa (4×4), F5 giữa ván, đấu lại | F5 khôi phục đúng cỡ bàn/bàn cờ/nước cuối; đấu lại vẫn đúng cỡ bàn; thắng 8×8 cần 5 quân |
 | 31 | Hết giờ bàn lớn | Chạy `TURN_MS=2000 npm start`, chơi online 6×6, không đánh | Sau ~2 giây máy chủ tự đánh ô trống, ván tiếp tục, không bị xử thua; khi chạy thật bàn 5×5+ là 45 giây |
 | 32 | Bàn phím & i18n bàn lớn | Chọn 8×8, dùng Tab/mũi tên tới sát biên; đổi sang English | Không lọt ra ngoài lưới; nhãn đọc đúng hàng/cột; toàn bộ tên cỡ bàn, luật thắng, bộ lọc điểm và nút xóa đổi sang tiếng Anh |
+| 33 | ∞: nhập môn & điều khiển | Chọn ∞, dùng phím mũi tên + Enter; kéo chuột; cuộn/chụm; bấm ±, về giữa, tới nước vừa đánh | Ô (0,0) ở giữa; con trỏ luôn hiện; kéo >6px không đặt quân; zoom trong khoảng 24–96px; nút về giữa/tới nước vừa đánh hoạt động; không lỗi console |
+| 34 | ∞: vùng tự mở rộng | Đánh ra sát biên rồi ra ngoài vùng cũ | Vùng trắng mở thêm 2 ô quanh quân xa nhất có hoạt ảnh ~250ms, không co lại; ô ngoài vùng bị làm mờ và bấm vào chỉ nhấp nháy cảnh báo |
+| 35 | ∞: thắng và overline | Tạo 5 quân ngang/dọc/chéo ở toạ độ âm; tạo chuỗi 6 quân | Thắng đúng, sợi len nối trọn chuỗi (kể cả >5), thẻ kết quả đúng người thắng, có thông báo cho trình đọc màn hình |
+| 36 | ∞: mobile 320–360px | Thu cửa sổ về 320px, chơi ∞ | Không có thanh cuộn ngang; chạm đặt quân, kéo để pan, chụm để zoom mà không cuộn trang; chữ toạ độ/số nước không tràn |
+| 37 | ∞: online, F5 và đấu lại | Tạo phòng ∞ với hai cửa sổ; đánh vài nước, F5, đấu lại | Hai bên thấy cùng toạ độ/thứ tự nước; F5 khôi phục đủ nước, vùng, nước cuối và lượt trong 60 giây; đấu lại reset bàn ∞ và đổi người đi trước |
+| 38 | ∞: hòa kỹ thuật & bảng điểm | Chạy `INFINITE_MAX_MOVES=8 npm start`, chơi đủ 8 nước không ai thắng; mở Bảng điểm | Ván hòa với thông báo đạt giới hạn, bàn bị khóa; bảng điểm có mục **∞ Vô cực** riêng, không ảnh hưởng điểm 3×3–8×8 |
 
 Thử thêm: chọn 8×8 rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -221,9 +230,12 @@ Thử thêm: chọn 8×8 rồi bật Giảm chuyển động → không nhấp n
 ## Quyết định thiết kế & giả định
 
 - **Hết giờ = tự đánh ngẫu nhiên một ô trống.** Cách này giữ ván tiếp diễn, tránh treo phòng; máy chủ phát `game:timeout` để client hiển thị thông báo. Bàn 5×5 trở lên có 45 giây/lượt, bàn nhỏ hơn 30 giây.
-- **Server là nguồn sự thật.** Client chỉ gửi ý định (`game:move` với chỉ số ô). Server kiểm tra phòng, thành viên, trạng thái, lượt, chỉ số, ô trống rồi mới tính thắng/hòa và phát trạng thái. Server tự suy ra `winLength` từ `size`; client không thể gửi luật thắng riêng.
+- **Server là nguồn sự thật.** Client chỉ gửi ý định: `game:move` với `{index}` cho bàn hữu hạn hoặc `{x, y}` cho bàn ∞. Server kiểm tra phòng, thành viên, trạng thái, lượt, toạ độ/vùng, ô trống rồi mới tính thắng/hòa và phát trạng thái. Server tự suy ra `winLength` từ `size`; client không thể gửi luật thắng riêng.
+- **Bàn ∞ lưu thưa và mở rộng một chiều.** `game-core.js` giữ `INFINITE = { winLength: 5, initialHalf: 4, edgeMargin: 2, maxMoves: 2000 }`; quân nằm trong `Map` khoá `"x,y"` kèm mảng `moves` có thứ tự. Vùng chơi là hợp của khung ban đầu `[-4..4]²` và hộp bao các quân nới 2 ô, nên không bao giờ co lại; client và server cùng import file này để luật/vùng không lệch. Hòa chỉ xảy ra ở giới hạn kỹ thuật 2000 nước, không dựa trên diện tích vùng.
+- **AI ∞ chỉ tính ô gần quân đã đánh.** Ứng viên là các ô trống trong vùng cách một quân ≤2 ô; nếu không có thì quét cả vùng. AI Khó chạy iterative deepening + alpha-beta sâu tối đa 4 trong Web Worker với ngân sách ~800ms/lượt và luôn trả về nước hợp lệ (best-so-far khi hết giờ). AI mạnh nhưng **không hoàn hảo** trên bàn ∞, đặc biệt khi chuỗi threat phức tạp.
 - **Luật thắng dùng chung một file.** `public/js/game-core.js` chứa `BOARD_CONFIGS` và hàm quét 4 hướng quanh nước vừa đi; server import trực tiếp file này nên client và server không bao giờ lệch luật.
-- **AI Khó chỉ hoàn hảo trên 3×3.** Bàn 3×3 dùng minimax đầy đủ nên không thể thua. Bàn 4×4–8×8 dùng iterative deepening + alpha-beta trong ngân sách ~800ms/lượt, giới hạn độ sâu (4×4 sâu hơn, 7×7–8×8 nông hơn) và chỉ xét các ô gần quân đã có; AI chơi tốt nhưng có thể bị đánh bại, đặc biệt trên bàn lớn.
+- **AI Khó chỉ hoàn hảo trên 3×3.** Bàn 3×3 dùng minimax đầy đủ nên không thể thua. Bàn 4×4–8×8 dùng iterative deepening + alpha-beta trong ngân sách ~800ms/lượt, giới hạn độ sâu (4×4 sâu hơn, 7×7–8×8 nông hơn) và chỉ xét các ô gần quân đã có; bàn ∞ dùng cùng cách nhưng trên `Map` thưa. AI chơi tốt nhưng có thể bị đánh bại, đặc biệt trên bàn lớn hoặc bàn ∞.
+- **Bàn ∞ không có "mép bàn".** Chuỗi thắng được quét trực tiếp trên toạ độ nguyên, nên chuỗi dài hơn 5 vẫn thắng và không bao giờ vòng từ hàng này sang hàng khác. Người chơi chỉ đánh được trong vùng hiện tại; vùng tự mở khi quân tiến ra xa.
 - **Điểm lưu riêng theo cỡ bàn.** Mỗi cỡ bàn có bảng AI (3 độ khó) và 2 người riêng; dữ liệu kiểu cũ (không có cỡ bàn) được chuyển vào mục 3×3 khi tải lần đầu, không xóa dữ liệu.
 - **`playerKey` chỉ dùng để vào lại phòng**, được trả trong ack tạo/join/rejoin và lưu sessionStorage; không bao giờ xuất hiện trong `room:state` gửi cho người khác.
 - **Phòng trong RAM.** Phù hợp một instance, đơn giản và không cần cơ sở dữ liệu; đánh đổi là mất phòng khi restart.

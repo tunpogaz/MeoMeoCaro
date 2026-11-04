@@ -6,18 +6,33 @@
 import assert from 'node:assert/strict';
 import {
   BOARD_CONFIGS,
+  INFINITE,
+  INFINITE_SIZE,
+  cellKey,
   checkWinFromMove,
+  checkWinInfinite,
+  computeRegion,
   createBoard,
+  createInfiniteState,
   findWinner,
   getEmptyCells,
+  getInfiniteEmptyCells,
   getResult,
+  infiniteResult,
+  infiniteStateFromMoves,
   isDraw,
+  isInRegion,
+  isInfiniteSize,
+  isValidBoardSize,
   isValidSize,
   otherPlayer,
   place,
+  placeInfinite,
+  regionHeight,
+  regionWidth,
   winLengthFor,
 } from '../public/js/game-core.js';
-import { chooseMove } from '../public/js/ai.js';
+import { chooseInfiniteMove, chooseMove } from '../public/js/ai.js';
 
 let passed = 0;
 function check(name, fn) {
@@ -401,6 +416,262 @@ check('AI ban lon khong danh vao o da co quan', () => {
       assert.equal(board[move], null, `size ${size} ${difficulty} picked occupied ${move}`);
     }
   }
+});
+
+console.log('ban vo cuc');
+
+function infiniteMoves(entries) {
+  return infiniteStateFromMoves(entries);
+}
+
+check('∞: kich thuoc, vung rong 9x9 va mo rong khong bao gio co lai', () => {
+  assert.equal(isInfiniteSize(INFINITE_SIZE), true);
+  assert.equal(isValidBoardSize(INFINITE_SIZE), true);
+  assert.equal(isValidBoardSize('Infinite'), false);
+  assert.equal(winLengthFor(INFINITE_SIZE), 5);
+
+  const emptyRegion = computeRegion([]);
+  assert.deepEqual(emptyRegion, { minX: -4, maxX: 4, minY: -4, maxY: 4 });
+  assert.equal(regionWidth(emptyRegion), 9);
+  assert.equal(regionHeight(emptyRegion), 9);
+
+  const far = computeRegion([{ x: 20, y: -30 }]);
+  assert.deepEqual(far, { minX: -4, maxX: 22, minY: -32, maxY: 4 });
+
+  const backToCenter = computeRegion([{ x: 20, y: -30 }, { x: 0, y: 0 }]);
+  assert.deepEqual(backToCenter, far);
+
+  const state = createInfiniteState();
+  let previous = state.region;
+  for (const [x, y] of [[0, 0], [4, 4], [-4, 0], [4, -4], [5, 5], [-6, 3]]) {
+    assert.equal(placeInfinite(state, x, y, state.moves.length % 2 ? 'B' : 'A'), true);
+    const next = state.region;
+    assert.ok(next.minX <= previous.minX, 'minX must not shrink');
+    assert.ok(next.maxX >= previous.maxX, 'maxX must not shrink');
+    assert.ok(next.minY <= previous.minY, 'minY must not shrink');
+    assert.ok(next.maxY >= previous.maxY, 'maxY must not shrink');
+    previous = next;
+  }
+  assert.deepEqual(previous, { minX: -8, maxX: 7, minY: -6, maxY: 7 });
+});
+
+check('∞: dat quan tu choi toa do sai, ngoai vung va o da co', () => {
+  const state = createInfiniteState();
+  assert.equal(placeInfinite(state, 5, 0, 'A'), false);
+  assert.equal(placeInfinite(state, 0.5, 0, 'A'), false);
+  assert.equal(placeInfinite(state, 0, 0, 'X'), false);
+  assert.equal(placeInfinite(state, 0, 0, 'A'), true);
+  assert.equal(placeInfinite(state, 0, 0, 'B'), false);
+  assert.deepEqual(state.moves, [{ x: 0, y: 0, s: 'A' }]);
+  assert.equal(state.cells.get(cellKey(0, 0)), 'A');
+
+  assert.equal(isInRegion(state.region, 0, 0), true);
+  assert.equal(isInRegion(state.region, 4, -4), true);
+  assert.equal(isInRegion(state.region, 5, 0), false);
+  assert.equal(isInRegion(state.region, 0.5, 0), false);
+  assert.equal(isInRegion(state.region, null, 0), false);
+});
+
+check('∞: thang 5 va overline theo ca 4 huong voi toa do am', () => {
+  const cases = [
+    { start: { x: -3, y: -2 }, dir: { x: 0, y: 1 } },
+    { start: { x: 2, y: -4 }, dir: { x: 1, y: 0 } },
+    { start: { x: -5, y: -5 }, dir: { x: 1, y: 1 } },
+    { start: { x: -5, y: 5 }, dir: { x: 1, y: -1 } },
+  ];
+
+  for (const { start, dir } of cases) {
+    const cells = new Map();
+    const expected = [];
+    for (let step = 0; step < 5; step += 1) {
+      const point = { x: start.x + dir.x * step, y: start.y + dir.y * step };
+      cells.set(cellKey(point.x, point.y), 'A');
+      expected.push(point);
+    }
+    const last = expected[expected.length - 1];
+    assert.deepEqual(checkWinInfinite(cells, last.x, last.y, 'A'), expected);
+
+    const four = new Map(cells);
+    four.delete(cellKey(last.x, last.y));
+    const before = expected[expected.length - 2];
+    assert.equal(checkWinInfinite(four, before.x, before.y, 'A'), null);
+  }
+
+  const overlineCells = new Map();
+  for (let x = 0; x <= 5; x += 1) overlineCells.set(cellKey(x, 0), 'B');
+  const overline = checkWinInfinite(overlineCells, 5, 0, 'B');
+  assert.equal(overline.length, 6);
+  assert.deepEqual(
+    overline,
+    Array.from({ length: 6 }, (_, x) => ({ x, y: 0 }))
+  );
+  assert.equal(checkWinInfinite(overlineCells, 5, 0, 'A'), null);
+});
+
+check('∞: ket qua uu tien thang nuoc cuoi roi moi hoa ky thuat', () => {
+  const state = infiniteMoves([
+    { x: 0, y: 0, s: 'A' },
+    { x: 0, y: 1, s: 'B' },
+    { x: 0, y: 2, s: 'A' },
+  ]);
+  const limited = infiniteResult(state, 3);
+  assert.equal(limited.finished, true);
+  assert.equal(limited.draw, true);
+  assert.equal(limited.limit, true);
+  assert.equal(infiniteResult(state, 4).finished, false);
+
+  const winning = infiniteMoves([
+    { x: -2, y: -1, s: 'A' },
+    { x: 2, y: 2, s: 'B' },
+    { x: -1, y: -1, s: 'A' },
+    { x: 2, y: 3, s: 'B' },
+    { x: 0, y: -1, s: 'A' },
+    { x: 2, y: 4, s: 'B' },
+    { x: 1, y: -1, s: 'A' },
+    { x: 2, y: 5, s: 'B' },
+    { x: 2, y: -1, s: 'A' },
+  ]);
+  const result = infiniteResult(winning, 5);
+  assert.equal(result.winner, 'A');
+  assert.equal(result.draw, false);
+  assert.equal(result.limit, false);
+  assert.deepEqual(
+    result.line,
+    [-2, -1, 0, 1, 2].map((x) => ({ x, y: -1 }))
+  );
+});
+
+check('∞: dung lai trang thai bo qua nuoc sai va nuoc trung o', () => {
+  const built = infiniteStateFromMoves([
+    { x: 0, y: 0, s: 'A' },
+    { x: 0, y: 0, s: 'B' },
+    { x: 1.5, y: 2, s: 'A' },
+    { x: '1', y: 2, s: 'A' },
+    null,
+    { x: 2, y: 2, s: 'C' },
+    { x: 3, y: 3, s: 'B' },
+  ]);
+  assert.deepEqual(built.moves, [
+    { x: 0, y: 0, s: 'A' },
+    { x: 3, y: 3, s: 'B' },
+  ]);
+  assert.equal(built.cells.size, 2);
+  assert.deepEqual(built.region, { minX: -4, maxX: 5, minY: -4, maxY: 5 });
+});
+
+check('∞: o trong trong vung dung so luong', () => {
+  const state = createInfiniteState();
+  const empty = getInfiniteEmptyCells(state.cells, state.region);
+  assert.equal(empty.length, 81);
+  assert.ok(empty.some((cell) => cell.x === -4 && cell.y === -4));
+  assert.ok(empty.some((cell) => cell.x === 4 && cell.y === 4));
+  assert.equal(placeInfinite(state, 0, 0, 'A'), true);
+  const after = getInfiniteEmptyCells(state.cells, state.region);
+  assert.equal(after.length, 80);
+  assert.ok(!after.some((cell) => cell.x === 0 && cell.y === 0));
+});
+
+console.log('AI vo cuc');
+
+check('∞: AI danh nuoc dau tien o goc toa do (0, 0)', () => {
+  for (const difficulty of ['easy', 'medium', 'hard']) {
+    assert.deepEqual(
+      chooseInfiniteMove(createInfiniteState(), 'A', 'B', difficulty, () => 0.5),
+      { x: 0, y: 0 }
+    );
+  }
+});
+
+check('∞: AI thang ngay khi co 4 quan lien tiep', () => {
+  const state = infiniteMoves([
+    { x: -1, y: 0, s: 'A' },
+    { x: 0, y: 0, s: 'A' },
+    { x: 1, y: 0, s: 'A' },
+    { x: 2, y: 0, s: 'A' },
+    { x: 0, y: 1, s: 'B' },
+    { x: 1, y: 1, s: 'B' },
+    { x: -2, y: -2, s: 'B' },
+  ]);
+  const move = chooseInfiniteMove(state, 'A', 'B', 'medium', () => 0.5);
+  assert.ok(move, 'AI phai tra ve nuoc di');
+  assert.equal(move.y, 0);
+  assert.ok(move.x === 3 || move.x === -2, `expected a winning end, got ${JSON.stringify(move)}`);
+});
+
+check('∞: AI chan ngay khi doi thu co 4 quan lien tiep', () => {
+  const state = infiniteMoves([
+    { x: -1, y: 0, s: 'B' },
+    { x: 0, y: 0, s: 'B' },
+    { x: 1, y: 0, s: 'B' },
+    { x: 2, y: 0, s: 'B' },
+    { x: 0, y: 1, s: 'A' },
+    { x: 0, y: -1, s: 'A' },
+    { x: 1, y: 1, s: 'A' },
+  ]);
+  for (const difficulty of ['easy', 'medium', 'hard']) {
+    const move = chooseInfiniteMove(state, 'A', 'B', difficulty, () => 0.1, {
+      timeLimit: 120,
+    });
+    assert.ok(move, `AI ${difficulty} phai tra ve nuoc di`);
+    assert.equal(move.y, 0);
+    assert.ok(
+      move.x === 3 || move.x === -2,
+      `AI ${difficulty} expected a blocking end, got ${JSON.stringify(move)}`
+    );
+  }
+});
+
+check('∞: AI Kho tra nuoc hop le trong thoi gian gioi han', () => {
+  const state = infiniteMoves([
+    { x: 0, y: 0, s: 'A' },
+    { x: 1, y: 0, s: 'B' },
+    { x: 0, y: 1, s: 'A' },
+    { x: -1, y: 2, s: 'B' },
+    { x: 2, y: 2, s: 'A' },
+    { x: -2, y: -1, s: 'B' },
+    { x: 3, y: 3, s: 'A' },
+    { x: -3, y: 1, s: 'B' },
+  ]);
+  const start = Date.now();
+  const move = chooseInfiniteMove(state, 'A', 'B', 'hard', Math.random, {
+    timeLimit: 150,
+  });
+  const elapsed = Date.now() - start;
+  assert.ok(move, 'AI phai tra ve nuoc di');
+  assert.equal(isInRegion(state.region, move.x, move.y), true);
+  assert.equal(state.cells.has(cellKey(move.x, move.y)), false);
+  assert.ok(elapsed < 1500, `hard AI took ${elapsed}ms`);
+});
+
+check('∞: AI tu danh nhau moi nuoc deu hop le va vung chi mo rong', () => {
+  const state = createInfiniteState();
+  const seen = new Set();
+  let previous = state.region;
+  let finished = false;
+
+  for (let step = 0; step < 30 && !finished; step += 1) {
+    const me = step % 2 === 0 ? 'A' : 'B';
+    const difficulty = step % 3 === 0 ? 'medium' : 'easy';
+    const move = chooseInfiniteMove(state, me, otherPlayer(me), difficulty, () => {
+      return ((step * 37 + 11) % 100) / 100;
+    });
+    assert.ok(move, `nuoc ${step} khong duoc null`);
+    assert.equal(isInRegion(state.region, move.x, move.y), true, `nuoc ${step} ngoai vung`);
+    assert.equal(state.cells.has(cellKey(move.x, move.y)), false, `nuoc ${step} trung o`);
+    assert.equal(placeInfinite(state, move.x, move.y, me), true);
+    seen.add(cellKey(move.x, move.y));
+
+    const next = state.region;
+    assert.ok(next.minX <= previous.minX && next.maxX >= previous.maxX);
+    assert.ok(next.minY <= previous.minY && next.maxY >= previous.maxY);
+    previous = next;
+    finished = infiniteResult(state).finished;
+  }
+
+  assert.ok(state.moves.length >= 10, `only ${state.moves.length} moves played`);
+  assert.ok(finished || state.moves.length === 30, 'van phai ket thuc hoac du 30 nuoc');
+  if (finished) assert.equal(infiniteResult(state).finished, true);
+  assert.equal(seen.size, state.moves.length);
 });
 
 console.log(`\n${passed} tests passed`);

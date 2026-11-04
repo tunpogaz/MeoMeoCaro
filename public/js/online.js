@@ -172,8 +172,11 @@ export class OnlineClient {
     return this.#emitAck('room:rejoin', { roomId, playerKey });
   }
 
-  move(roomId, index) {
-    return this.#emitAck('game:move', { roomId, index });
+  move(roomId, move) {
+    if (move && typeof move === 'object') {
+      return this.#emitAck('game:move', { roomId, x: move.x, y: move.y });
+    }
+    return this.#emitAck('game:move', { roomId, index: move });
   }
 
   rematch(roomId) {

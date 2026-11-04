@@ -280,6 +280,57 @@
         <div class="board-wrap">
           <div id="board" class="board" role="group"></div>
           <svg id="win-svg" class="win-svg" aria-hidden="true"></svg>
+
+          <div id="board-infinite" class="infinite-board" hidden>
+            <div id="infinite-stage" class="infinite-stage">
+              <canvas
+                id="infinite-canvas"
+                class="infinite-canvas"
+                role="application"
+                tabindex="0"
+                aria-label=""
+              ></canvas>
+
+              <div class="infinite-controls" role="group" data-i18n-aria="infControls">
+                <button
+                  id="inf-zoom-in"
+                  class="infinite-btn"
+                  type="button"
+                  data-i18n-aria="infZoomIn"
+                  data-i18n-title="infZoomIn"
+                >+</button>
+                <button
+                  id="inf-zoom-out"
+                  class="infinite-btn"
+                  type="button"
+                  data-i18n-aria="infZoomOut"
+                  data-i18n-title="infZoomOut"
+                >−</button>
+                <button
+                  id="inf-center"
+                  class="infinite-btn"
+                  type="button"
+                  data-i18n-aria="infCenter"
+                  data-i18n-title="infCenter"
+                >⌖</button>
+                <button
+                  id="inf-last"
+                  class="infinite-btn"
+                  type="button"
+                  data-i18n-aria="infLastMove"
+                  data-i18n-title="infLastMove"
+                >↦</button>
+              </div>
+
+              <div class="infinite-meta" aria-hidden="true">
+                <span id="inf-coords" class="infinite-pill"></span>
+                <span id="inf-count" class="infinite-pill"></span>
+              </div>
+            </div>
+
+            <p id="inf-hint" class="infinite-hint"></p>
+            <p id="inf-move-live" class="sr-only" aria-live="polite"></p>
+          </div>
         </div>
 
         <p id="game-status" class="game-status" aria-live="polite"></p>
@@ -362,6 +413,8 @@
             <li data-i18n="rule4"></li>
             <li data-i18n="rule5"></li>
             <li data-i18n="rule6"></li>
+            <li data-i18n="rule7"></li>
+            <li data-i18n="rule8"></li>
           </ul>
         </div>
       </div>

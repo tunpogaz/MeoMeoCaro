@@ -13,9 +13,16 @@ import compression from 'compression';
 import { Server } from 'socket.io';
 import {
   DEFAULT_BOARD_SIZE,
-  createBoard,
+  INFINITE,
+  cellKey,
   checkWinFromMove,
+  checkWinInfinite,
+  computeRegion,
+  createBoard,
+  getInfiniteEmptyCells,
   isBoardFull,
+  isInRegion,
+  isInfiniteSize,
   isValidSize,
   winLengthFor,
 } from './public/js/game-core.js';
@@ -91,6 +98,11 @@ const RECONNECT_GRACE = Number(process.env.RECONNECT_GRACE_MS) || 60 * 1000; // 
 // Test co the dat TURN_MS de rut ngan moi co ban; khi chay that:
 // 3x3 - 4x4 = 30 giay, 5x5 - 8x8 = 45 giay.
 const TURN_MS_OVERRIDE = Number(process.env.TURN_MS) > 0 ? Number(process.env.TURN_MS) : null;
+// Test co the ha gioi han nay de kiem tra hoa ky thuat ma khong phai danh 2000 nuoc.
+const MAX_INFINITE_MOVES =
+  Number(process.env.INFINITE_MAX_MOVES) > 0
+    ? Math.floor(Number(process.env.INFINITE_MAX_MOVES))
+    : INFINITE.maxMoves;
 const MAX_ROOMS = 1000;
 const RATE_LIMIT = 10; // toi da 10 su kien / giay / socket
 const EMOTE_COOLDOWN = 2000;
@@ -108,6 +120,7 @@ const rooms = new Map();
 
 function turnMsFor(size) {
   if (TURN_MS_OVERRIDE) return TURN_MS_OVERRIDE;
+  if (isInfiniteSize(size)) return 45_000;
   return size >= 5 ? 45_000 : 30_000;
 }
 
@@ -160,13 +173,18 @@ function uniqueRoomId() {
 }
 
 function createRoom(id, size = DEFAULT_BOARD_SIZE) {
-  const safeSize = isValidSize(size) ? size : DEFAULT_BOARD_SIZE;
+  const infinite = isInfiniteSize(size);
+  const safeSize = infinite ? size : isValidSize(size) ? size : DEFAULT_BOARD_SIZE;
   return {
     id,
     size: safeSize,
+    infinite,
     winLength: winLengthFor(safeSize),
     players: [],
-    board: createBoard(safeSize),
+    board: infinite ? null : createBoard(safeSize),
+    cells: infinite ? new Map() : null,
+    moves: infinite ? [] : null,
+    region: infinite ? computeRegion([]) : null,
     lastMove: null,
     turn: 'A',
     status: 'waiting', // waiting | playing | finished
@@ -218,20 +236,30 @@ function describeRoom(room) {
 // ---------------------------------------------------------------------------
 // Gui trang thai
 // ---------------------------------------------------------------------------
+function cloneWinLine(line) {
+  if (!Array.isArray(line)) return null;
+  return line.map((point) =>
+    typeof point === 'number' ? point : { x: point.x, y: point.y }
+  );
+}
+
 function publicState(room, youKey) {
   const now = Date.now();
   const canRunTimer =
     room.status === 'playing' && room.turnDeadline !== null && bothConnected(room);
-  return {
+  const state = {
     id: room.id,
     size: room.size,
     winLength: room.winLength,
-    board: room.board.slice(),
-    lastMove: room.lastMove,
+    board: room.infinite ? null : room.board.slice(),
+    lastMove:
+      room.lastMove && typeof room.lastMove === 'object'
+        ? { x: room.lastMove.x, y: room.lastMove.y }
+        : room.lastMove,
     turn: room.turn,
     status: room.status,
     winner: room.winner,
-    winLine: room.winLine ? room.winLine.slice() : null,
+    winLine: cloneWinLine(room.winLine),
     score: { ...room.score },
     starter: room.starter,
     players: room.players.map((p) => ({
@@ -246,6 +274,15 @@ function publicState(room, youKey) {
     rematchVotes: room.rematchVotes.size,
     youVotedRematch: room.rematchVotes.has(youKey),
   };
+
+  if (room.infinite) {
+    state.moves = room.moves.map((move) => ({ x: move.x, y: move.y, s: move.s }));
+    state.region = { ...room.region };
+    state.moveCount = room.moves.length;
+    state.maxMoves = MAX_INFINITE_MOVES;
+  }
+
+  return state;
 }
 
 function sendState(room) {
@@ -283,7 +320,14 @@ function touch(room) {
 // Vong doi phong / van
 // ---------------------------------------------------------------------------
 function startRound(room, firstSymbol) {
-  room.board = createBoard(room.size);
+  if (room.infinite) {
+    room.board = null;
+    room.cells = new Map();
+    room.moves = [];
+    room.region = computeRegion([]);
+  } else {
+    room.board = createBoard(room.size);
+  }
   room.lastMove = null;
   room.turn = firstSymbol;
   room.starter = firstSymbol;
@@ -325,6 +369,29 @@ function applyMove(room, index, symbol) {
   }
   if (isBoardFull(room.board)) {
     finishRound(room, 'draw', null, 'draw');
+    return { winner: null, line: null, draw: true };
+  }
+
+  room.turn = symbol === 'A' ? 'B' : 'A';
+  room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
+  sendState(room);
+  return { winner: null, line: null, draw: false };
+}
+
+function applyInfiniteMove(room, x, y, symbol) {
+  room.cells.set(cellKey(x, y), symbol);
+  room.moves.push({ x, y, s: symbol });
+  room.lastMove = { x, y };
+  room.region = computeRegion(room.moves);
+  touch(room);
+
+  const line = checkWinInfinite(room.cells, x, y, symbol, room.winLength);
+  if (line) {
+    finishRound(room, symbol, line, 'win');
+    return { winner: symbol, line, draw: false };
+  }
+  if (room.moves.length >= MAX_INFINITE_MOVES) {
+    finishRound(room, 'draw', null, 'maxMoves');
     return { winner: null, line: null, draw: true };
   }
 
@@ -408,8 +475,13 @@ io.on('connection', (socket) => {
     }
 
     const rawSize = payload?.size;
-    if (rawSize !== undefined && rawSize !== null && !isValidSize(rawSize)) {
-      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 den 8x8.');
+    if (
+      rawSize !== undefined &&
+      rawSize !== null &&
+      !isValidSize(rawSize) &&
+      !isInfiniteSize(rawSize)
+    ) {
+      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 den 8x8 hoac vo cuc.');
     }
     const size = rawSize === undefined || rawSize === null ? DEFAULT_BOARD_SIZE : rawSize;
 
@@ -544,6 +616,31 @@ io.on('connection', (socket) => {
       sendError(socket, 'notYourTurn', 'Chua den luot ban dau!');
       return replyError(ack, 'notYourTurn', 'Chua den luot ban dau!');
     }
+    if (room.infinite) {
+      const x = payload?.x;
+      const y = payload?.y;
+      if (!Number.isInteger(x) || !Number.isInteger(y)) {
+        sendError(socket, 'invalidCoord', 'Toa do nuoc di khong hop le.');
+        return replyError(ack, 'invalidCoord', 'Toa do nuoc di khong hop le.');
+      }
+      if (!isInRegion(room.region, x, y)) {
+        sendError(socket, 'coordOutsideRegion', 'O nam ngoai vung choi.');
+        return replyError(ack, 'coordOutsideRegion', 'O nam ngoai vung choi.');
+      }
+      if (room.moves.length >= MAX_INFINITE_MOVES) {
+        sendError(socket, 'moveLimit', 'Da dat gioi han so nuoc.');
+        return replyError(ack, 'moveLimit', 'Da dat gioi han so nuoc.');
+      }
+      if (room.cells.has(cellKey(x, y))) {
+        sendError(socket, 'cellTaken', 'O nay co meo roi!');
+        return replyError(ack, 'cellTaken', 'O nay co meo roi!');
+      }
+
+      applyInfiniteMove(room, x, y, player.symbol);
+      if (typeof ack === 'function') ack({ ok: true });
+      return;
+    }
+
     const index = payload?.index;
     if (!Number.isInteger(index) || index < 0 || index >= room.board.length) {
       sendError(socket, 'invalidMove', 'Nuoc di khong hop le.');
@@ -645,13 +742,24 @@ setInterval(() => {
     if (!bothConnected(room)) continue;
     if (now < room.turnDeadline) continue;
 
+    const symbol = room.turn;
+
+    if (room.infinite) {
+      const empties = getInfiniteEmptyCells(room.cells, room.region);
+      if (!empties.length) continue;
+      const move = empties[crypto.randomInt(0, empties.length)];
+      log('turn timeout', room.id, symbol, `-> auto move (${move.x},${move.y})`);
+      io.to(room.id).emit('game:timeout', { symbol });
+      applyInfiniteMove(room, move.x, move.y, symbol);
+      continue;
+    }
+
     const empties = [];
     for (let i = 0; i < room.board.length; i += 1) {
       if (room.board[i] === null) empties.push(i);
     }
     if (!empties.length) continue;
 
-    const symbol = room.turn;
     const index = empties[crypto.randomInt(0, empties.length)];
     log('turn timeout', room.id, symbol, '-> auto move', index);
     io.to(room.id).emit('game:timeout', { symbol });
