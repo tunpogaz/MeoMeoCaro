@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFF4E0" />
+    <meta
+      name="description"
+      content="Meo Meo Caro - game cờ ca-rô 3x3 chủ đề mèo: chơi với máy, 2 người cùng máy và online qua mã phòng."
+    />
+    <title>Meo Meo Caro 🐾</title>
+
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Nunito:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body data-screen="home" data-mode="">
+    <a class="skip-link" href="#app" data-i18n="skipToContent">Bỏ qua tới nội dung</a>
+
+    <div class="bg-decor" id="bg-decor" aria-hidden="true"></div>
+
+    <main id="app">
+      <!-- ================= TRANG CHU ================= -->
+      <section id="screen-home" class="screen" data-screen="home">
+        <div class="home-grid">
+          <div class="mascot-wrap">
+            <div class="mascot" id="mascot" aria-hidden="true"></div>
+          </div>
+
+          <div class="home-content">
+            <div class="brand">
+              <span class="brand-paw" id="brand-paw" aria-hidden="true"></span>
+              <h1 class="logo" data-i18n="appName">Meo Meo Caro</h1>
+              <p class="tagline" data-i18n="tagline"></p>
+            </div>
+
+            <div class="profile-card">
+              <label class="field-label" for="name-input" data-i18n="yourName"></label>
+              <input
+                id="name-input"
+                class="text-input"
+                type="text"
+                maxlength="12"
+                autocomplete="nickname"
+                spellcheck="false"
+                data-i18n-placeholder="namePlaceholder"
+              />
+              <span class="field-label" data-i18n="chooseAvatar"></span>
+              <div class="avatar-list" id="home-avatar-list" role="group" data-i18n-aria="chooseAvatar"></div>
+            </div>
+
+            <div class="mode-list">
+              <button id="btn-ai" class="mode-btn mode-orange" type="button">
+                <span class="mode-icon" aria-hidden="true">🤖</span>
+                <span class="mode-copy">
+                  <span class="mode-title" data-i18n="playAI"></span>
+                  <span class="mode-sub" data-i18n="playAISub"></span>
+                </span>
+                <span class="mode-arrow" aria-hidden="true">›</span>
+              </button>
+
+              <button id="btn-local" class="mode-btn mode-mint" type="button">
+                <span class="mode-icon" aria-hidden="true">👥</span>
+                <span class="mode-copy">
+                  <span class="mode-title" data-i18n="playLocal"></span>
+                  <span class="mode-sub" data-i18n="playLocalSub"></span>
+                </span>
+                <span class="mode-arrow" aria-hidden="true">›</span>
+              </button>
+
+              <button id="btn-online" class="mode-btn mode-gray" type="button">
+                <span class="mode-icon" aria-hidden="true">🌐</span>
+                <span class="mode-copy">
+                  <span class="mode-title" data-i18n="playOnline"></span>
+                  <span class="mode-sub" data-i18n="playOnlineSub"></span>
+                </span>
+                <span class="mode-arrow" aria-hidden="true">›</span>
+              </button>
+            </div>
+
+            <div class="secondary-row">
+              <button id="btn-settings" class="pill-btn" type="button">
+                <span aria-hidden="true">⚙️</span>
+                <span data-i18n="settings"></span>
+              </button>
+              <button id="btn-howto" class="pill-btn" type="button">
+                <span aria-hidden="true">🐾</span>
+                <span data-i18n="howto"></span>
+              </button>
+              <button id="btn-scores" class="pill-btn" type="button">
+                <span aria-hidden="true">🏆</span>
+                <span data-i18n="scores"></span>
+              </button>
+            </div>
+
+            <p class="footer-note" data-i18n="footer"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CHON DO KHO ================= -->
+      <section id="screen-ai-setup" class="screen" data-screen="ai-setup" hidden>
+        <header class="screen-head">
+          <button id="ai-setup-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="chooseDifficulty"></h2>
+        </header>
+
+        <div class="difficulty-grid" id="difficulty-grid">
+          <button class="difficulty-card" type="button" data-difficulty="easy" aria-pressed="false">
+            <span class="diff-cat" data-cat-theme="cream" aria-hidden="true"></span>
+            <span class="diff-name" data-i18n="easy"></span>
+            <span class="diff-desc" data-i18n="easyDesc"></span>
+          </button>
+          <button class="difficulty-card" type="button" data-difficulty="medium" aria-pressed="false">
+            <span class="diff-cat" data-cat-theme="gray" aria-hidden="true"></span>
+            <span class="diff-name" data-i18n="medium"></span>
+            <span class="diff-desc" data-i18n="mediumDesc"></span>
+          </button>
+          <button class="difficulty-card" type="button" data-difficulty="hard" aria-pressed="false">
+            <span class="diff-cat" data-cat-theme="tabby" aria-hidden="true"></span>
+            <span class="diff-name" data-i18n="hard"></span>
+            <span class="diff-desc" data-i18n="hardDesc"></span>
+          </button>
+        </div>
+
+        <h3 class="section-title" data-i18n="whoFirst"></h3>
+        <div class="first-row" id="first-row">
+          <button class="choice-btn" type="button" data-first="human" aria-pressed="false" data-i18n="goFirst"></button>
+          <button class="choice-btn" type="button" data-first="ai" aria-pressed="false" data-i18n="goSecond"></button>
+          <button class="choice-btn" type="button" data-first="random" aria-pressed="false" data-i18n="randomize"></button>
+        </div>
+
+        <button id="start-ai" class="btn primary wide" type="button" data-i18n="startGame"></button>
+      </section>
+
+      <!-- ================= LOBBY ONLINE ================= -->
+      <section id="screen-lobby" class="screen" data-screen="lobby" hidden>
+        <header class="screen-head">
+          <button id="lobby-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="onlineTitle"></h2>
+        </header>
+
+        <div class="lobby-card">
+          <div class="profile-mini">
+            <span class="avatar avatar-lg" id="lobby-avatar" aria-hidden="true"></span>
+            <div class="profile-mini-copy">
+              <strong id="lobby-name">—</strong>
+              <small data-i18n="yourProfile"></small>
+            </div>
+          </div>
+
+          <p class="muted" data-i18n="onlineDesc"></p>
+
+          <button id="btn-create-room" class="btn primary wide" type="button" data-i18n="createRoom"></button>
+
+          <div class="divider"><span data-i18n="or"></span></div>
+
+          <form id="join-form" class="join-form" autocomplete="off">
+            <label class="sr-only" for="room-input" data-i18n="joinRoom"></label>
+            <input
+              id="room-input"
+              class="text-input code-input"
+              type="text"
+              inputmode="text"
+              maxlength="8"
+              spellcheck="false"
+              autocapitalize="characters"
+              data-i18n-placeholder="joinPlaceholder"
+            />
+            <button id="btn-join-room" class="btn secondary" type="submit" data-i18n="joinRoom"></button>
+          </form>
+
+          <p class="hint" data-i18n="onlineHint"></p>
+          <p id="lobby-status" class="lobby-status" role="status" hidden></p>
+        </div>
+      </section>
+
+      <!-- ================= PHONG CHO ================= -->
+      <section id="screen-room" class="screen" data-screen="room" hidden>
+        <header class="screen-head">
+          <button id="room-back" class="icon-btn" type="button" data-i18n-aria="leaveRoom">←</button>
+          <h2 data-i18n="roomReady"></h2>
+        </header>
+
+        <div class="room-card">
+          <div class="room-cat" id="room-cat" aria-hidden="true"></div>
+          <p class="room-title" data-i18n="waitingTitle"></p>
+          <p class="muted" data-i18n="waitingDesc"></p>
+
+          <span class="room-label" data-i18n="roomCodeLabel"></span>
+          <div class="code-row">
+            <span class="room-code" id="room-code">-----</span>
+            <button id="btn-copy" class="btn mini" type="button" data-i18n="copyCode"></button>
+          </div>
+
+          <div class="room-actions">
+            <button id="btn-share" class="btn secondary" type="button" data-i18n="shareLink"></button>
+            <button id="btn-leave-room" class="btn ghost" type="button" data-i18n="leaveRoom"></button>
+          </div>
+          <p class="room-link" id="room-link"></p>
+        </div>
+      </section>
+
+      <!-- ================= BAN CO ================= -->
+      <section id="screen-game" class="screen" data-screen="game" hidden>
+        <header class="game-head">
+          <button id="game-back" class="icon-btn" type="button" data-i18n-aria="home">←</button>
+          <span class="mode-label" id="game-mode-label"></span>
+          <button id="game-sound" class="icon-btn sound-btn" type="button" aria-pressed="true" data-i18n-aria="sound">
+            🔊
+          </button>
+        </header>
+
+        <div class="players-row">
+          <div class="player-card" id="p-left">
+            <span class="p-avatar" id="left-avatar" aria-hidden="true"></span>
+            <div class="p-info">
+              <strong class="p-name" id="left-name">—</strong>
+              <span class="p-tag" id="left-tag"></span>
+            </div>
+            <span class="p-score" id="left-score" hidden></span>
+            <span class="conn-dot" id="left-dot" hidden></span>
+            <span class="emote-bubble" id="left-bubble" aria-live="polite"></span>
+          </div>
+
+          <div class="turn-timer" id="turn-timer">
+            <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+            <span class="timer-text" id="timer-text"></span>
+          </div>
+
+          <div class="player-card" id="p-right">
+            <span class="p-avatar" id="right-avatar" aria-hidden="true"></span>
+            <div class="p-info">
+              <strong class="p-name" id="right-name">—</strong>
+              <span class="p-tag" id="right-tag"></span>
+            </div>
+            <span class="p-score" id="right-score" hidden></span>
+            <span class="conn-dot" id="right-dot" hidden></span>
+            <span class="emote-bubble" id="right-bubble" aria-live="polite"></span>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div id="board" class="board" role="group"></div>
+          <svg id="win-svg" class="win-svg" aria-hidden="true"></svg>
+        </div>
+
+        <p id="game-status" class="game-status" aria-live="polite"></p>
+        <p id="game-record" class="game-record" hidden></p>
+
+        <div class="emote-bar" id="emote-bar" hidden>
+          <span class="emote-label" data-i18n="emoteLabel"></span>
+          <div class="emote-buttons" role="group" data-i18n-aria="emoteLabel">
+            <button class="emote-btn" type="button" data-emote="😺">😺</button>
+            <button class="emote-btn" type="button" data-emote="😹">😹</button>
+            <button class="emote-btn" type="button" data-emote="😿">😿</button>
+            <button class="emote-btn" type="button" data-emote="🐟">🐟</button>
+            <button class="emote-btn" type="button" data-emote="🧶">🧶</button>
+            <button class="emote-btn" type="button" data-emote="👏">👏</button>
+          </div>
+        </div>
+
+        <div class="result-card" id="result-card" hidden>
+          <p class="result-text" id="result-text" aria-live="polite"></p>
+          <div class="result-actions">
+            <button id="act-primary" class="btn primary" type="button"></button>
+            <button id="act-secondary" class="btn secondary" type="button" hidden></button>
+            <button id="act-tertiary" class="btn ghost" type="button" hidden></button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ================= DIALOGS ================= -->
+    <dialog id="dialog-settings" class="modal" aria-labelledby="settings-title">
+      <div class="modal-inner">
+        <header class="modal-head">
+          <h2 id="settings-title" data-i18n="settingsTitle"></h2>
+          <button class="modal-close" type="button" data-close="dialog-settings" data-i18n-aria="close">×</button>
+        </header>
+        <div class="modal-body">
+          <label class="setting-row" for="set-sound">
+            <span class="setting-text">
+              <strong data-i18n="sound"></strong>
+              <small data-i18n="soundDesc"></small>
+            </span>
+            <input class="switch" id="set-sound" type="checkbox" role="switch" />
+          </label>
+          <label class="setting-row" for="set-music">
+            <span class="setting-text">
+              <strong data-i18n="music"></strong>
+              <small data-i18n="musicDesc"></small>
+            </span>
+            <input class="switch" id="set-music" type="checkbox" role="switch" />
+          </label>
+          <label class="setting-row" for="set-motion">
+            <span class="setting-text">
+              <strong data-i18n="reduceMotion"></strong>
+              <small data-i18n="reduceMotionDesc"></small>
+            </span>
+            <input class="switch" id="set-motion" type="checkbox" role="switch" />
+          </label>
+          <div class="setting-row">
+            <span class="setting-text"><strong data-i18n="language"></strong></span>
+            <select class="select" id="set-lang" data-i18n-aria="language">
+              <option value="vi">Tiếng Việt</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="dialog-howto" class="modal" aria-labelledby="howto-title">
+      <div class="modal-inner">
+        <header class="modal-head">
+          <h2 id="howto-title" data-i18n="howtoTitle"></h2>
+          <button class="modal-close" type="button" data-close="dialog-howto" data-i18n-aria="close">×</button>
+        </header>
+        <div class="modal-body">
+          <ul class="rules">
+            <li data-i18n="rule1"></li>
+            <li data-i18n="rule2"></li>
+            <li data-i18n="rule3"></li>
+            <li data-i18n="rule4"></li>
+            <li data-i18n="rule5"></li>
+            <li data-i18n="rule6"></li>
+          </ul>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="dialog-scores" class="modal" aria-labelledby="scores-title">
+      <div class="modal-inner">
+        <header class="modal-head">
+          <h2 id="scores-title" data-i18n="scoresTitle"></h2>
+          <button class="modal-close" type="button" data-close="dialog-scores" data-i18n-aria="close">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="scores-body" id="scores-body"></div>
+          <div class="modal-actions">
+            <button id="btn-reset-scores" class="btn ghost small" type="button" data-i18n="resetScores"></button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="loading" id="loading" hidden>
+      <div class="loading-cat" id="loading-cat" aria-hidden="true"></div>
+      <p class="loading-text" data-i18n="loading"></p>
+      <div class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+    </div>
+
+    <div id="conn-banner" class="conn-banner" role="status" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+
+    <noscript>
+      <p class="noscript">Bạn cần bật JavaScript để chơi Meo Meo Caro. / Please enable JavaScript to play.</p>
+    </noscript>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

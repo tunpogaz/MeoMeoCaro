@@ -1,0 +1,34 @@
+{
+  "name": "meo-meo-caro",
+  "version": "1.0.0",
+  "description": "Meo Meo Caro - Tic Tac Toe chu de meo: choi voi may, 2 nguoi cung may va online qua ma phong.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/ai.test.mjs && node test/server.test.mjs",
+    "test:ai": "node test/ai.test.mjs",
+    "test:server": "node test/server.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "tic-tac-toe",
+    "socket.io",
+    "game",
+    "cat",
+    "pwa"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}

@@ -1,0 +1,1944 @@
+/**
+ * Bo dieu khien chinh: dieu huong man hinh, choi voi may, 2 nguoi cung may,
+ * online qua ma phong, cai dat, am thanh va PWA.
+ */
+import { applyI18n, setLang, t } from './i18n.js';
+import {
+  loadProfile,
+  saveProfile,
+  loadSettings,
+  saveSettings,
+  loadScores,
+  saveScores,
+  resetAllScores,
+  loadSession,
+  saveSession,
+  clearSession,
+} from './storage.js';
+import {
+  catAvatar,
+  catFace,
+  mascotSVG,
+  pawSVG,
+  yarnSVG,
+  fishSVG,
+  bellSVG,
+  AVATAR_KEYS,
+} from '../assets/cats.js';
+import * as audio from './audio.js';
+import {
+  initBoard,
+  renderBoard,
+  setBoardLabel,
+  resetBoardFocus,
+  focusFirstCell,
+  shakeCell,
+  showWinLine,
+  clearWinLine,
+  burstConfetti,
+  toast,
+  setBanner,
+  setLoading,
+  showEmoteBubble,
+  clearEmoteBubble,
+  showSleepZ,
+  updateTimer,
+} from './ui.js';
+import { createBoard, getResult, place, otherPlayer } from './game-core.js';
+import { chooseMove } from './ai.js';
+import { OnlineClient } from './online.js';
+
+const SCREENS = ['home', 'ai-setup', 'lobby', 'room', 'game'];
+const PIECE_THEME = { A: 'orange', B: 'gray' };
+const DIFFICULTY_THEME = { easy: 'cream', medium: 'gray', hard: 'tabby' };
+const EMOTES = new Set(['😺', '😹', '😿', '🐟', '🧶', '👏']);
+const SESSION_TTL = 3 * 60 * 60 * 1000;
+const REPLACED_FLAG = 'mmc.replaced';
+
+const ERROR_KEY_BY_CODE = {
+  notYourTurn: 'notYourTurn',
+  cellTaken: 'cellTaken',
+  invalidMove: 'invalidMove',
+  gameNotPlaying: 'gameNotPlaying',
+  notInRoom: 'notInRoom',
+  alreadyInRoom: 'alreadyInRoom',
+  roomLimit: 'roomLimit',
+  rateLimit: 'rateLimit',
+  emoteCooldown: 'emoteCooldown',
+  invalidEmote: 'invalidEmote',
+  opponentOffline: 'opponentOffline',
+  rejoinFailed: 'rejoinFailed',
+  roomNotFound: 'roomNotFound',
+  roomFull: 'roomFull',
+  invalidCode: 'invalidCode',
+};
+
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  screen: 'home',
+  mode: '',
+  profile: loadProfile(),
+  settings: loadSettings(),
+  scores: loadScores(),
+  game: null,
+  ai: {
+    difficulty: 'easy',
+    firstChoice: 'random',
+    symbol: 'B',
+    thinking: false,
+    timer: null,
+  },
+  online: {
+    roomId: null,
+    playerKey: null,
+    roomState: null,
+    youSymbol: null,
+    pendingMove: null,
+    finishReason: null,
+    celebratedKey: null,
+    lastBoardCount: null,
+    lastEmoteAt: 0,
+    rematchPending: false,
+    rematchToastShown: false,
+    rejoining: false,
+  },
+};
+
+let lobbyBusy = false;
+let lobbyStatusKind = '';
+let avatarButtons = [];
+let onlineTimerId = null;
+let onlineTimerDeadline = 0;
+let onlineTimerTotal = 30000;
+let lastServerError = { code: '', at: 0 };
+
+const net = new OnlineClient({
+  onConnect: handleOnlineConnect,
+  onDisconnect: handleOnlineDisconnect,
+  onConnectError: handleOnlineConnectError,
+  onEvent: handleOnlineEvent,
+});
+
+// ---------------------------------------------------------------------------
+// Tien ich
+// ---------------------------------------------------------------------------
+function stripName(raw) {
+  return Array.from(
+    String(raw ?? '')
+      .normalize('NFC')
+      .replace(/[\u0000-\u001F\u007F<>]/g, '')
+      .replace(/\s{2,}/g, ' ')
+  )
+    .slice(0, 12)
+    .join('');
+}
+
+function cleanName(raw) {
+  return stripName(raw).trim();
+}
+
+function normalizeRoomCode(raw) {
+  return String(raw ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 5);
+}
+
+function currentProfile() {
+  return {
+    name: cleanName(state.profile.name) || t('defaultName'),
+    avatar: AVATAR_KEYS.includes(state.profile.avatar) ? state.profile.avatar : 'orange',
+  };
+}
+
+function displayName(symbol) {
+  if (state.mode === 'online') {
+    const player = state.online.roomState?.players?.find((item) => item.symbol === symbol);
+    if (player?.name) return player.name;
+    return symbol === 'A' ? t('orangeCat') : t('grayCat');
+  }
+  if (symbol === 'A') return cleanName(state.profile.name) || t('defaultName');
+  if (state.mode === 'ai') return t('aiName');
+  return t('localGuest');
+}
+
+function focusElement(el) {
+  if (!el) return;
+  requestAnimationFrame(() => {
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      el.focus();
+    }
+  });
+}
+
+function readFlag(key) {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeFlag(key, value) {
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    /* che do rieng tu: bo qua */
+  }
+}
+
+function prefersReducedMotion() {
+  return state.settings.reduceMotion || document.body.classList.contains('reduce-motion');
+}
+
+// ---------------------------------------------------------------------------
+// Dieu huong
+// ---------------------------------------------------------------------------
+function showScreen(name) {
+  for (const screen of SCREENS) {
+    const el = $(`screen-${screen}`);
+    if (el) el.hidden = screen !== name;
+  }
+  state.screen = name;
+  document.body.dataset.screen = name;
+  window.scrollTo(0, 0);
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.body.dataset.mode = mode;
+}
+
+function goHome({ focus = true } = {}) {
+  if (state.online.roomId) {
+    leaveOnlineRoom();
+    return;
+  }
+  exitLocalGame();
+  setMode('');
+  setBanner('');
+  $('emote-bar').hidden = true;
+  $('left-dot').hidden = true;
+  $('right-dot').hidden = true;
+  $('turn-timer').hidden = true;
+  clearEmoteBubbles();
+  updateTimer(null);
+  showScreen('home');
+  if (focus) focusElement($('btn-ai'));
+}
+
+function openAISetup() {
+  exitLocalGame();
+  setMode('');
+  setBanner('');
+  $('emote-bar').hidden = true;
+  clearEmoteBubbles();
+  updateSetupSelection();
+  showScreen('ai-setup');
+  const selected = document.querySelector(
+    `.difficulty-card[data-difficulty="${state.ai.difficulty}"]`
+  );
+  focusElement(selected);
+}
+
+function enterLobby() {
+  exitLocalGame();
+  setMode('');
+  setBanner('');
+  $('emote-bar').hidden = true;
+  clearEmoteBubbles();
+  renderLobbyProfile();
+  clearLobbyStatus();
+  showScreen('lobby');
+  focusElement($('btn-create-room'));
+  primeOnline();
+}
+
+function updateModeLabel() {
+  let label = '';
+  if (state.mode === 'ai') label = `${t('modeAI')} · ${t(state.ai.difficulty)}`;
+  else if (state.mode === 'local') label = t('modeLocal');
+  else if (state.mode === 'online') {
+    label = t('modeOnline');
+    if (state.online.roomId) label += ` · ${state.online.roomId}`;
+  }
+  $('game-mode-label').textContent = label;
+}
+
+// ---------------------------------------------------------------------------
+// Hinh anh / profile / avatar
+// ---------------------------------------------------------------------------
+function injectVisuals() {
+  $('mascot').innerHTML = mascotSVG();
+  $('brand-paw').innerHTML = pawSVG('#FFD43B');
+  $('loading-cat').innerHTML = catAvatar('orange');
+  $('room-cat').innerHTML = mascotSVG();
+
+  document.querySelectorAll('[data-cat-theme]').forEach((el) => {
+    el.innerHTML = catFace(el.dataset.catTheme, 'normal');
+  });
+
+  const decor = [
+    { svg: pawSVG('#F0C39A'), style: 'top:7%;left:3%;width:56px;transform:rotate(-18deg)' },
+    { svg: yarnSVG(), style: 'top:16%;right:5%;width:74px;transform:rotate(9deg)' },
+    { svg: fishSVG(), style: 'bottom:12%;left:6%;width:66px;transform:rotate(-8deg)' },
+    { svg: bellSVG(), style: 'bottom:18%;right:8%;width:52px;transform:rotate(12deg)' },
+    { svg: pawSVG('#FFD6E0'), style: 'bottom:5%;left:44%;width:42px;transform:rotate(20deg)' },
+    { svg: pawSVG('#8CE0C3'), style: 'top:48%;left:2%;width:34px;transform:rotate(-10deg)' },
+  ];
+  $('bg-decor').innerHTML = decor
+    .map(
+      (item) =>
+        `<div class="decor" style="${item.style}" aria-hidden="true">${item.svg}</div>`
+    )
+    .join('');
+}
+
+function renderAvatarChoices() {
+  const list = $('home-avatar-list');
+  if (!list) return;
+  list.innerHTML = '';
+  avatarButtons = AVATAR_KEYS.map((key, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'avatar-btn';
+    button.dataset.avatar = key;
+    button.setAttribute('aria-pressed', String(state.profile.avatar === key));
+    button.setAttribute('aria-label', t('avatarAria', { n: index + 1 }));
+    button.innerHTML = catAvatar(key);
+    button.addEventListener('click', () => selectAvatar(key));
+    list.appendChild(button);
+    return button;
+  });
+}
+
+function selectAvatar(key) {
+  if (!AVATAR_KEYS.includes(key)) return;
+  state.profile.avatar = key;
+  saveProfile(currentProfile());
+  avatarButtons.forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.avatar === key));
+  });
+  renderLobbyProfile();
+  audio.play('click');
+}
+
+function renderLobbyProfile() {
+  const profile = currentProfile();
+  $('lobby-avatar').innerHTML = catAvatar(profile.avatar);
+  $('lobby-name').textContent = profile.name;
+}
+
+function syncNameInput() {
+  const input = $('name-input');
+  if (!input) return;
+  const name = cleanName(state.profile.name) || t('defaultName');
+  state.profile.name = name;
+  input.value = name;
+}
+
+function updateSetupSelection() {
+  document.querySelectorAll('.difficulty-card').forEach((button) => {
+    button.setAttribute(
+      'aria-pressed',
+      String(button.dataset.difficulty === state.ai.difficulty)
+    );
+  });
+  document.querySelectorAll('#first-row .choice-btn').forEach((button) => {
+    button.setAttribute(
+      'aria-pressed',
+      String(button.dataset.first === state.ai.firstChoice)
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ve ban co va the nguoi choi
+// ---------------------------------------------------------------------------
+function setPlayerCard(side, data) {
+  const card = $(`p-${side}`);
+  if (!card) return;
+  $(`${side}-avatar`).innerHTML = catAvatar(data.avatar || (side === 'left' ? 'orange' : 'gray'));
+  $(`${side}-name`).textContent =
+    data.name || t(side === 'left' ? 'orangeCat' : 'grayCat');
+  $(`${side}-tag`).textContent = data.tag || '';
+
+  const scoreEl = $(`${side}-score`);
+  const showScore = data.score !== null && data.score !== undefined;
+  scoreEl.hidden = !showScore;
+  if (showScore) scoreEl.textContent = String(data.score);
+
+  const dot = $(`${side}-dot`);
+  dot.hidden = data.online !== true;
+  dot.classList.toggle('off', data.online === true && data.connected === false);
+
+  card.classList.toggle('active', data.active === true);
+  card.classList.toggle('winner', data.winner === true);
+  card.classList.toggle('loser', data.loser === true);
+}
+
+function setCardsForLocal() {
+  const game = state.game;
+  if (!game) return;
+  const aiMode = state.mode === 'ai';
+  const finished = game.finished;
+  const draw = game.draw === true;
+  const winner = game.winner;
+
+  setPlayerCard('left', {
+    name: displayName('A'),
+    avatar: state.profile.avatar,
+    tag: `${t('youBadge')} · ${t('orangeCat')}`,
+    score: state.mode === 'local' ? state.scores.local.A : null,
+    active: !finished && game.turn === 'A',
+    winner: finished && !draw && winner === 'A',
+    loser: finished && !draw && winner === 'B',
+    online: false,
+  });
+
+  setPlayerCard('right', {
+    name: aiMode ? t('aiName') : t('localGuest'),
+    avatar: 'gray',
+    tag: t('grayCat'),
+    score: state.mode === 'local' ? state.scores.local.B : null,
+    active: !finished && game.turn === 'B',
+    winner: finished && !draw && winner === 'B',
+    loser: finished && !draw && winner === 'A',
+    online: false,
+  });
+}
+
+function setStatus(text, tone = '') {
+  const el = $('game-status');
+  el.textContent = text;
+  el.className = tone ? `game-status ${tone}` : 'game-status';
+}
+
+function updateRecordLocal() {
+  const el = $('game-record');
+  if (!state.game || !(state.mode === 'ai' || state.mode === 'local')) {
+    el.hidden = true;
+    return;
+  }
+  if (state.mode === 'ai') {
+    const record = state.scores.ai[state.ai.difficulty] || { w: 0, d: 0, l: 0 };
+    el.textContent = t('recordAI', record);
+  } else {
+    const local = state.scores.local;
+    el.textContent = t('recordLocalFull', {
+      a: displayName('A'),
+      wa: local.A,
+      b: displayName('B'),
+      wb: local.B,
+      d: local.draw,
+    });
+  }
+  el.hidden = false;
+}
+
+function clearEmoteBubbles() {
+  clearEmoteBubble($('p-left'));
+  clearEmoteBubble($('p-right'));
+}
+
+function setActionButton(button, spec) {
+  if (!button) return;
+  if (!spec) {
+    button.hidden = true;
+    button.textContent = '';
+    button.disabled = false;
+    button.onclick = null;
+    button.title = '';
+    button.classList.remove('pulse');
+    return;
+  }
+  button.hidden = false;
+  button.textContent = spec.label;
+  button.disabled = spec.disabled === true;
+  button.title = spec.title || '';
+  button.classList.toggle('pulse', spec.pulse === true);
+  button.onclick = (event) => {
+    event.preventDefault();
+    if (!button.disabled && typeof spec.handler === 'function') spec.handler();
+  };
+}
+
+function applyResultActions(actions = {}) {
+  setActionButton($('act-primary'), actions.primary);
+  setActionButton($('act-secondary'), actions.secondary);
+  setActionButton($('act-tertiary'), actions.tertiary);
+}
+
+function showResult(text, actions) {
+  const card = $('result-card');
+  const wasHidden = card.hidden;
+  $('result-text').textContent = text;
+  applyResultActions(actions);
+  card.hidden = false;
+  if (wasHidden && typeof card.scrollIntoView === 'function') {
+    card.scrollIntoView({
+      block: 'nearest',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }
+}
+
+function hideResult() {
+  const card = $('result-card');
+  card.hidden = true;
+  $('result-text').textContent = '';
+  applyResultActions({});
+}
+
+function hideRecord() {
+  $('game-record').hidden = true;
+}
+
+function expressionForFinished(game, symbol) {
+  if (!game.finished) return 'normal';
+  if (game.draw) return 'sleep';
+  return symbol === game.winner ? 'win' : 'lose';
+}
+
+function resultTextForLocal() {
+  const game = state.game;
+  if (!game) return '';
+  if (game.draw) return t('drawTitle');
+  return t('winTitle', { name: displayName(game.winner) });
+}
+
+function actionsForLocal() {
+  const aiMode = state.mode === 'ai';
+  return {
+    primary: {
+      label: t('playAgain'),
+      handler: () => {
+        if (aiMode) startAIGame();
+        else startLocalGame(state.game?.starter || 'A');
+      },
+    },
+    secondary: aiMode
+      ? {
+          label: t('changeDifficulty'),
+          handler: () => openAISetup(),
+        }
+      : {
+          label: t('swapStarter'),
+          handler: () => {
+            const nextStarter = state.game?.starter === 'A' ? 'B' : 'A';
+            startLocalGame(nextStarter);
+          },
+        },
+    tertiary: {
+      label: t('home'),
+      handler: () => goHome(),
+    },
+  };
+}
+
+function enterGameScreen(mode) {
+  cancelAiTimer();
+  setMode(mode);
+  updateModeLabel();
+  updateSoundButton();
+  setBoardLabel(t('boardLabel'));
+  $('emote-bar').hidden = mode !== 'online';
+  $('game-record').hidden = true;
+  $('result-card').hidden = true;
+  $('turn-timer').hidden = true;
+  $('left-dot').hidden = mode !== 'online';
+  $('right-dot').hidden = mode !== 'online';
+  clearWinLine();
+  clearEmoteBubbles();
+  setStatus('', '');
+  setBanner('');
+  showScreen('game');
+  resetBoardFocus();
+}
+
+// ---------------------------------------------------------------------------
+// Choi voi may / 2 nguoi cung may
+// ---------------------------------------------------------------------------
+function cancelAiTimer() {
+  if (state.ai.timer !== null) {
+    window.clearTimeout(state.ai.timer);
+    state.ai.timer = null;
+  }
+  state.ai.thinking = false;
+}
+
+function exitLocalGame() {
+  cancelAiTimer();
+  state.game = null;
+  clearWinLine();
+  hideResult();
+  hideRecord();
+  setStatus('', '');
+}
+
+function startAIGame() {
+  cancelAiTimer();
+  state.game = null;
+  const first =
+    state.ai.firstChoice === 'random'
+      ? Math.random() < 0.5
+        ? 'A'
+        : 'B'
+      : state.ai.firstChoice === 'human'
+        ? 'A'
+        : 'B';
+
+  state.game = {
+    board: createBoard(),
+    turn: first,
+    starter: first,
+    finished: false,
+    winner: null,
+    winLine: null,
+    draw: false,
+  };
+
+  enterGameScreen('ai');
+  renderLocalGame();
+  focusFirstCell();
+  audio.play('join');
+
+  if (first === 'B') scheduleAIMove();
+}
+
+function startLocalGame(starter = 'A') {
+  cancelAiTimer();
+  state.game = {
+    board: createBoard(),
+    turn: starter === 'B' ? 'B' : 'A',
+    starter: starter === 'B' ? 'B' : 'A',
+    finished: false,
+    winner: null,
+    winLine: null,
+    draw: false,
+  };
+
+  enterGameScreen('local');
+  renderLocalGame();
+  focusFirstCell();
+  audio.play('join');
+}
+
+function renderLocalGame() {
+  const game = state.game;
+  if (!game) return;
+  const aiMode = state.mode === 'ai';
+  const locked =
+    game.finished || (aiMode && (state.ai.thinking || game.turn !== 'A'));
+  const preview = locked ? null : aiMode ? 'A' : game.turn;
+
+  renderBoard(game.board, {
+    locked,
+    preview,
+    expressionFor: (symbol) => expressionForFinished(game, symbol),
+  });
+  setBoardLabel(t('boardLabel'));
+  setCardsForLocal();
+  updateRecordLocal();
+  updateModeLabel();
+
+  if (game.finished && game.winLine) showWinLine(game.winLine);
+  else clearWinLine();
+
+  if (game.finished) {
+    setStatus('', '');
+    showResult(resultTextForLocal(), actionsForLocal());
+    return;
+  }
+
+  hideResult();
+  if (aiMode) {
+    setStatus(
+      game.turn === 'B' ? t('aiThinking', { name: t('aiName') }) : t('yourTurn'),
+      ''
+    );
+  } else {
+    setStatus(t('turnLocal', { name: displayName(game.turn) }), '');
+  }
+}
+
+function onLocalCell(index) {
+  const game = state.game;
+  if (!game || game.finished) return;
+
+  if (game.board[index]) {
+    shakeCell(index);
+    audio.play('error');
+    toast(t('cellTaken'), 'error', 1600);
+    return;
+  }
+
+  if (state.mode === 'ai') {
+    if (state.ai.thinking || game.turn !== 'A') {
+      shakeCell(index);
+      audio.play('error');
+      toast(t('notYourTurn'), 'error', 1600);
+      return;
+    }
+    playLocalMove('A', index);
+  } else {
+    playLocalMove(game.turn, index);
+  }
+}
+
+function playLocalMove(symbol, index) {
+  const game = state.game;
+  if (!game || game.finished || game.turn !== symbol) return false;
+  if (!place(game.board, index, symbol)) return false;
+
+  audio.play('meow');
+  const result = getResult(game.board);
+
+  if (result.finished) {
+    finishLocalRound(result);
+    return true;
+  }
+
+  game.turn = otherPlayer(symbol);
+  renderLocalGame();
+
+  if (state.mode === 'ai' && game.turn === 'B') scheduleAIMove();
+  return true;
+}
+
+function finishLocalRound(result) {
+  const game = state.game;
+  if (!game) return;
+
+  game.finished = true;
+  game.winner = result.winner;
+  game.winLine = result.line;
+  game.draw = result.draw === true;
+
+  cancelAiTimer();
+
+  if (state.mode === 'ai') {
+    const record = state.scores.ai[state.ai.difficulty];
+    if (game.draw) record.d += 1;
+    else if (game.winner === 'A') record.w += 1;
+    else record.l += 1;
+  } else if (state.mode === 'local') {
+    if (game.draw) state.scores.local.draw += 1;
+    else state.scores.local[game.winner] += 1;
+  }
+
+  saveScores(state.scores);
+  renderLocalGame();
+  renderScores();
+  celebrateLocal(game);
+}
+
+function celebrateLocal(game) {
+  if (game.draw) {
+    audio.play('draw');
+    showSleepZ();
+    return;
+  }
+  const youWon = game.winner === 'A';
+  if (state.mode === 'ai') {
+    audio.play(youWon ? 'win' : 'lose');
+    if (youWon) burstConfetti();
+  } else {
+    audio.play('win');
+    burstConfetti();
+  }
+}
+
+function scheduleAIMove() {
+  cancelAiTimer();
+  const game = state.game;
+  if (!game || state.mode !== 'ai' || game.finished || game.turn !== 'B') return;
+
+  state.ai.thinking = true;
+  renderLocalGame();
+
+  const delay = 400 + Math.floor(Math.random() * 500);
+  state.ai.timer = window.setTimeout(() => {
+    state.ai.timer = null;
+    const current = state.game;
+    if (!current || state.mode !== 'ai' || current.finished || current.turn !== 'B') {
+      state.ai.thinking = false;
+      return;
+    }
+
+    const index = chooseMove(current.board, 'B', 'A', state.ai.difficulty);
+    state.ai.thinking = false;
+    if (index >= 0) playLocalMove('B', index);
+    else renderLocalGame();
+  }, delay);
+}
+
+// ---------------------------------------------------------------------------
+// Online
+// ---------------------------------------------------------------------------
+function setLobbyStatus(message, type = 'error') {
+  const el = $('lobby-status');
+  if (!message) {
+    el.hidden = true;
+    el.textContent = '';
+    el.removeAttribute('data-type');
+    lobbyStatusKind = '';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+  el.dataset.type = type;
+  lobbyStatusKind = type;
+}
+
+function clearLobbyStatus() {
+  setLobbyStatus('');
+}
+
+function setLobbyBusy(busy) {
+  lobbyBusy = busy;
+  $('btn-create-room').disabled = busy;
+  $('btn-join-room').disabled = busy;
+}
+
+function errorMessageFor(code) {
+  const key = ERROR_KEY_BY_CODE[code];
+  return key ? t(key) : t('serverError');
+}
+
+function showServerError(code, fallback) {
+  const now = Date.now();
+  if (code === lastServerError.code && now - lastServerError.at < 1200) return;
+  lastServerError = { code: code || '', at: now };
+  const key = ERROR_KEY_BY_CODE[code];
+  const message = key ? t(key) : fallback && typeof fallback === 'string' ? fallback : t('serverError');
+  toast(message, 'error', 2800);
+  audio.play('error');
+}
+
+async function primeOnline() {
+  if (net.connected || lobbyBusy) return;
+  setLobbyStatus(t('connecting'), 'info');
+  try {
+    await net.connect();
+    if (!lobbyBusy && lobbyStatusKind === 'info' && state.screen === 'lobby') {
+      clearLobbyStatus();
+    }
+  } catch {
+    if (!lobbyBusy && state.screen === 'lobby') {
+      setLobbyStatus(t('genericError'), 'error');
+    }
+  }
+}
+
+async function createRoomFlow() {
+  if (lobbyBusy) return;
+  setLobbyBusy(true);
+  clearLobbyStatus();
+  setLobbyStatus(t('connecting'), 'info');
+
+  try {
+    await net.connect();
+    const response = await net.createRoom(currentProfile());
+    if (!response || response.ok !== true) {
+      setLobbyStatus(errorMessageFor(response?.code), 'error');
+      return;
+    }
+    handleJoinSuccess(response);
+  } catch {
+    setLobbyStatus(t('genericError'), 'error');
+  } finally {
+    setLobbyBusy(false);
+  }
+}
+
+async function joinRoomFlow() {
+  if (lobbyBusy) return;
+  const input = $('room-input');
+  const code = normalizeRoomCode(input.value);
+  input.value = code;
+
+  if (code.length !== 5) {
+    setLobbyStatus(t('invalidCode'), 'error');
+    input.focus();
+    return;
+  }
+
+  setLobbyBusy(true);
+  clearLobbyStatus();
+  setLobbyStatus(t('connecting'), 'info');
+
+  try {
+    await net.connect();
+    const response = await net.joinRoom(code, currentProfile());
+    if (!response || response.ok !== true) {
+      setLobbyStatus(errorMessageFor(response?.code), 'error');
+      return;
+    }
+    handleJoinSuccess(response);
+  } catch {
+    setLobbyStatus(t('genericError'), 'error');
+  } finally {
+    setLobbyBusy(false);
+  }
+}
+
+function handleJoinSuccess(response) {
+  state.online.roomId = response.roomId;
+  state.online.playerKey = response.playerKey;
+  state.online.roomState = response.state || null;
+  state.online.pendingMove = null;
+  state.online.finishReason = null;
+  state.online.celebratedKey = null;
+  state.online.lastBoardCount = null;
+  state.online.lastEmoteAt = 0;
+  state.online.rematchPending = false;
+  state.online.rematchToastShown = false;
+
+  saveSession(response.roomId, response.playerKey);
+  writeFlag(REPLACED_FLAG, null);
+  stripRoomParam();
+  clearLobbyStatus();
+  setBanner('');
+  audio.play('join');
+
+  if (response.state) applyOnlineState(response.state, { initial: true });
+}
+
+function applyOnlineState(next, options = {}) {
+  if (!next || next.id !== state.online.roomId) return;
+  const previous = state.online.roomState;
+  state.online.roomState = next;
+  state.online.pendingMove = null;
+
+  const you = next.players?.find((player) => player.isYou);
+  if (you) state.online.youSymbol = you.symbol;
+
+  if (next.status === 'waiting') {
+    showWaitingRoom(next, options);
+  } else {
+    if (previous?.status === 'finished' && next.status === 'playing') {
+      resetOnlineRoundState();
+    }
+    if (state.screen !== 'game' || state.mode !== 'online') {
+      enterOnlineGameScreen();
+    }
+    updateOnlineTimer(next);
+    syncOnlineView();
+  }
+
+  const filled = next.board.reduce((count, cell) => count + (cell ? 1 : 0), 0);
+  if (
+    !options.initial &&
+    state.online.lastBoardCount !== null &&
+    filled > state.online.lastBoardCount
+  ) {
+    audio.play('meow');
+  }
+  state.online.lastBoardCount = filled;
+}
+
+function showWaitingRoom(next, options = {}) {
+  setMode('online');
+  state.online.lastBoardCount = 0;
+  const wasRoom = state.screen === 'room';
+  showScreen('room');
+  updateRoomInfo();
+  if (!wasRoom || options.initial) focusElement($('btn-copy'));
+}
+
+function enterOnlineGameScreen() {
+  cancelAiTimer();
+  state.game = null;
+  setMode('online');
+  updateModeLabel();
+  updateSoundButton();
+  setBoardLabel(t('boardLabel'));
+  $('emote-bar').hidden = false;
+  $('game-record').hidden = true;
+  $('result-card').hidden = true;
+  $('left-dot').hidden = false;
+  $('right-dot').hidden = false;
+  $('turn-timer').hidden = true;
+  clearWinLine();
+  clearEmoteBubbles();
+  setStatus('', '');
+  setBanner('');
+  showScreen('game');
+  resetBoardFocus();
+}
+
+function syncOnlineView() {
+  const next = state.online.roomState;
+  if (!next || next.status === 'waiting') return;
+
+  if (next.youVotedRematch) state.online.rematchPending = false;
+
+  const you = next.players.find((player) => player.isYou);
+  const opponent = next.players.find((player) => !player.isYou);
+  const youSymbol = you?.symbol || state.online.youSymbol || 'A';
+  state.online.youSymbol = youSymbol;
+
+  const playing = next.status === 'playing';
+  const finished = next.status === 'finished';
+  const draw = next.winner === 'draw';
+  const winner = next.winner;
+  const opponentConnected = opponent ? opponent.connected !== false : false;
+
+  const cardFor = (symbol) => {
+    const player = next.players.find((item) => item.symbol === symbol);
+    const isYou = player?.isYou === true;
+    return {
+      name: player?.name || (symbol === 'A' ? t('orangeCat') : t('grayCat')),
+      avatar: player?.avatar || (symbol === 'A' ? 'orange' : 'gray'),
+      tag: `${isYou ? t('youBadge') : t('opponentBadge')} · ${
+        symbol === 'A' ? t('orangeCat') : t('grayCat')
+      }`,
+      score: next.score?.[symbol] ?? 0,
+      online: true,
+      connected: player ? player.connected !== false : false,
+      active: playing && next.turn === symbol,
+      winner: finished && !draw && winner === symbol,
+      loser: finished && !draw && winner !== symbol,
+    };
+  };
+
+  setPlayerCard('left', cardFor('A'));
+  setPlayerCard('right', cardFor('B'));
+
+  const locked =
+    !playing || next.turn !== youSymbol || state.online.pendingMove !== null;
+  renderBoard(next.board, {
+    locked,
+    preview: playing && next.turn === youSymbol ? youSymbol : null,
+    expressionFor: (symbol) => {
+      if (!finished) return 'normal';
+      if (draw) return 'sleep';
+      return symbol === winner ? 'win' : 'lose';
+    },
+  });
+  setBoardLabel(t('boardLabel'));
+
+  if (finished && next.winLine) showWinLine(next.winLine);
+  else clearWinLine();
+
+  updateModeLabel();
+
+  if (finished) {
+    setStatus('', '');
+    showResult(onlineResultText(), onlineActions(next, opponentConnected));
+    if (
+      next.rematchVotes > 0 &&
+      !next.youVotedRematch &&
+      !state.online.rematchToastShown
+    ) {
+      state.online.rematchToastShown = true;
+      toast(t('rematchAsked'), 'info', 2800);
+    }
+  } else {
+    hideResult();
+    if (!opponentConnected) setStatus(t('oppDisconnectedStatus'), '');
+    else if (next.turn === youSymbol) setStatus(t('yourTurn'), '');
+    else setStatus(t('waitOpponent', { name: displayName(next.turn) }), '');
+  }
+}
+
+function onlineResultText() {
+  const next = state.online.roomState;
+  if (!next) return '';
+  if (next.winner === 'draw') return t('drawTitle');
+  const name = displayName(next.winner);
+  if (state.online.finishReason === 'abandon') return t('abandonTitle', { name });
+  return t('winTitle', { name });
+}
+
+function onlineActions(next, opponentConnected) {
+  const youVoted = next.youVotedRematch === true || state.online.rematchPending;
+  const disabled = youVoted || !opponentConnected;
+  return {
+    primary: {
+      label: youVoted ? t('rematchWaiting') : t('rematch'),
+      disabled,
+      pulse: !youVoted && opponentConnected && next.rematchVotes > 0,
+      title: !opponentConnected ? t('opponentOffline') : '',
+      handler: voteRematch,
+    },
+    secondary: null,
+    tertiary: {
+      label: t('leaveRoom'),
+      handler: () => leaveOnlineRoom(),
+    },
+  };
+}
+
+function voteRematch() {
+  const next = state.online.roomState;
+  if (!next || next.status !== 'finished' || state.online.rematchPending) return;
+  const opponent = next.players.find((player) => !player.isYou);
+  if (opponent && opponent.connected === false) {
+    toast(t('opponentOffline'), 'error', 2400);
+    return;
+  }
+
+  state.online.rematchPending = true;
+  syncOnlineView();
+
+  net
+    .rematch(state.online.roomId)
+    .then((response) => {
+      if (!response?.ok) {
+        state.online.rematchPending = false;
+        syncOnlineView();
+        showServerError(response?.code, response?.error);
+      }
+    })
+    .catch(() => {
+      state.online.rematchPending = false;
+      syncOnlineView();
+      toast(t('genericError'), 'error');
+    });
+}
+
+function onOnlineCell(index) {
+  const next = state.online.roomState;
+  if (!next || next.status !== 'playing') return;
+  if (state.online.pendingMove !== null) return;
+
+  if (next.turn !== state.online.youSymbol) {
+    shakeCell(index);
+    audio.play('error');
+    toast(t('notYourTurn'), 'error', 1600);
+    return;
+  }
+
+  if (next.board[index]) {
+    shakeCell(index);
+    audio.play('error');
+    toast(t('cellTaken'), 'error', 1600);
+    return;
+  }
+
+  const value = Number(index);
+  if (!Number.isInteger(value) || value < 0 || value > 8) return;
+
+  state.online.pendingMove = value;
+  syncOnlineView();
+
+  net
+    .move(state.online.roomId, value)
+    .then((response) => {
+      if (!response?.ok) {
+        state.online.pendingMove = null;
+        shakeCell(value);
+        audio.play('error');
+        showServerError(response?.code, response?.error);
+        syncOnlineView();
+      }
+    })
+    .catch(() => {
+      state.online.pendingMove = null;
+      syncOnlineView();
+      toast(t('genericError'), 'error');
+    });
+}
+
+function resetOnlineRoundState() {
+  state.online.finishReason = null;
+  state.online.celebratedKey = null;
+  state.online.rematchPending = false;
+  state.online.rematchToastShown = false;
+  state.online.pendingMove = null;
+  hideResult();
+  clearWinLine();
+  clearEmoteBubbles();
+}
+
+function handleOnlineEvent(event, payload) {
+  switch (event) {
+    case 'room:state':
+      applyOnlineState(payload);
+      break;
+    case 'game:over':
+      handleGameOver(payload);
+      break;
+    case 'game:restart':
+      resetOnlineRoundState();
+      audio.play('join');
+      syncOnlineView();
+      break;
+    case 'game:timeout':
+      toast(t('timeUpToast'), 'info', 2600);
+      break;
+    case 'emote:received':
+      handleEmoteReceived(payload);
+      break;
+    case 'room:opponent-disconnected':
+      toast(t('opponentDisconnected'), 'error', 3200);
+      break;
+    case 'room:opponent-reconnected':
+      toast(t('opponentReconnected'), 'success', 2200);
+      audio.play('join');
+      break;
+    case 'room:closed':
+      handleRoomClosed(payload?.reason);
+      break;
+    case 'room:replaced':
+      handleTabReplaced();
+      break;
+    case 'error:message':
+      showServerError(payload?.code, payload?.message);
+      break;
+    default:
+      break;
+  }
+}
+
+function handleGameOver(payload) {
+  const next = state.online.roomState;
+  if (!next) return;
+
+  state.online.finishReason = payload?.reason || 'win';
+  const key = `${next.id}:${next.board.join('')}:${next.winner}`;
+
+  if (state.online.celebratedKey !== key) {
+    state.online.celebratedKey = key;
+    const winner = payload?.winner ?? next.winner;
+    if (winner === 'draw') {
+      audio.play('draw');
+      showSleepZ();
+    } else if (winner === state.online.youSymbol) {
+      audio.play('win');
+      if (payload?.reason !== 'abandon') burstConfetti();
+    } else {
+      audio.play('lose');
+    }
+  }
+
+  syncOnlineView();
+}
+
+function handleEmoteReceived(payload) {
+  const emote = payload?.emote;
+  if (!EMOTES.has(emote)) return;
+  const symbol = payload?.symbol;
+  const card = symbol === 'A' ? $('p-left') : symbol === 'B' ? $('p-right') : null;
+  if (card) showEmoteBubble(card, emote);
+  audio.play('emote');
+}
+
+function sendEmote(emote) {
+  if (!EMOTES.has(emote)) return;
+  const next = state.online.roomState;
+  if (state.mode !== 'online' || !state.online.roomId || !next) return;
+  if (next.status !== 'playing' && next.status !== 'finished') return;
+
+  const now = Date.now();
+  if (now - state.online.lastEmoteAt < 2000) {
+    toast(t('emoteCooldown'), 'error', 1600);
+    return;
+  }
+  state.online.lastEmoteAt = now;
+
+  const youSymbol = state.online.youSymbol;
+  const card = youSymbol === 'A' ? $('p-left') : $('p-right');
+  showEmoteBubble(card, emote);
+  audio.play('emote');
+  setEmoteButtonsDisabled(true);
+  window.setTimeout(() => setEmoteButtonsDisabled(false), 2000);
+
+  net
+    .sendEmote(state.online.roomId, emote)
+    .then((response) => {
+      if (!response?.ok) {
+        if (response?.code === 'emoteCooldown') state.online.lastEmoteAt = Date.now();
+        showServerError(response?.code, response?.error);
+      }
+    })
+    .catch(() => {
+      toast(t('genericError'), 'error');
+    });
+}
+
+function setEmoteButtonsDisabled(disabled) {
+  document.querySelectorAll('.emote-btn').forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function handleOnlineConnect() {
+  if (!state.online.roomId || !state.online.playerKey) {
+    if (!lobbyBusy && lobbyStatusKind === 'info' && state.screen === 'lobby') {
+      clearLobbyStatus();
+    }
+    return;
+  }
+  if (state.online.rejoining) return;
+
+  state.online.rejoining = true;
+  setBanner(t('reconnecting'), 'warn');
+
+  net
+    .rejoin(state.online.roomId, state.online.playerKey)
+    .then((response) => {
+      if (!response?.ok) {
+        endOnlineSession();
+        goHome({ focus: false });
+        toast(t('roomExpired'), 'error', 3400);
+        return;
+      }
+      saveSession(state.online.roomId, state.online.playerKey);
+      setBanner('');
+      audio.play('join');
+      toast(t('connectedToast'), 'success', 1800);
+      applyOnlineState(response.state);
+    })
+    .catch(() => {
+      setBanner(t('connLost'), 'error');
+    })
+    .finally(() => {
+      state.online.rejoining = false;
+    });
+}
+
+function handleOnlineDisconnect() {
+  if (!state.online.roomId) return;
+  stopOnlineTimer();
+  updateTimer(null);
+  setBanner(t('connLost'), 'error');
+  state.online.pendingMove = null;
+}
+
+function handleOnlineConnectError() {
+  if (state.online.roomId) {
+    setBanner(t('connLost'), 'error');
+    return;
+  }
+  if (state.screen === 'lobby' && !lobbyBusy && lobbyStatusKind !== 'error') {
+    setLobbyStatus(t('genericError'), 'error');
+  }
+}
+
+function handleRoomClosed(reason) {
+  if (!state.online.roomId) return;
+  endOnlineSession();
+  goHome({ focus: false });
+  const message =
+    reason === 'left'
+      ? t('opponentLeft')
+      : reason === 'expired'
+        ? t('roomExpired')
+        : t('roomClosed');
+  toast(message, reason === 'left' ? 'info' : 'error', 3200);
+}
+
+function handleTabReplaced() {
+  if (!state.online.roomId) return;
+  writeFlag(REPLACED_FLAG, '1');
+  endOnlineSession({ clearSaved: false });
+  goHome({ focus: false });
+  toast(t('tabReplaced'), 'info', 4200);
+}
+
+function endOnlineSession({ clearSaved = true } = {}) {
+  state.online.roomId = null;
+  state.online.playerKey = null;
+  state.online.roomState = null;
+  state.online.youSymbol = null;
+  state.online.pendingMove = null;
+  state.online.finishReason = null;
+  state.online.celebratedKey = null;
+  state.online.lastBoardCount = null;
+  state.online.rematchPending = false;
+  state.online.rematchToastShown = false;
+  stopOnlineTimer();
+  updateTimer(null);
+  clearWinLine();
+  hideResult();
+  clearEmoteBubbles();
+  setBanner('');
+  $('emote-bar').hidden = true;
+  $('turn-timer').hidden = true;
+  setEmoteButtonsDisabled(false);
+  if (state.mode === 'online') setMode('');
+  if (clearSaved) clearSession();
+}
+
+function leaveOnlineRoom({ confirm = false } = {}) {
+  if (confirm && !window.confirm(t('leaveConfirm'))) return;
+  const roomId = state.online.roomId;
+  if (!roomId) {
+    goHome();
+    return;
+  }
+
+  endOnlineSession();
+  if (net.connected) net.leave(roomId).catch(() => {});
+  goHome({ focus: true });
+  toast(t('roomLeft'), 'info', 2200);
+}
+
+function updateRoomInfo() {
+  const roomId = state.online.roomId;
+  if (!roomId) return;
+  $('room-code').textContent = roomId;
+  $('room-link').textContent = inviteUrl(roomId);
+}
+
+function inviteUrl(code) {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('room', code);
+  return url.href;
+}
+
+function stripRoomParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('room')) return;
+  url.searchParams.delete('room');
+  const next = `${url.pathname}${url.search ? url.search : ''}${url.hash}`;
+  try {
+    window.history.replaceState(null, '', next);
+  } catch {
+    /* bo qua */
+  }
+}
+
+function startOnlineTimer(leftMs, totalMs) {
+  stopOnlineTimer();
+  onlineTimerTotal = totalMs || 30000;
+  onlineTimerDeadline = Date.now() + Math.max(0, leftMs);
+
+  const tick = () => {
+    const left = onlineTimerDeadline - Date.now();
+    updateTimer(Math.max(0, left), onlineTimerTotal);
+    if (left <= 0) stopOnlineTimer();
+  };
+
+  tick();
+  onlineTimerId = window.setInterval(tick, 250);
+}
+
+function stopOnlineTimer() {
+  if (onlineTimerId !== null) {
+    window.clearInterval(onlineTimerId);
+    onlineTimerId = null;
+  }
+}
+
+function updateOnlineTimer(next) {
+  if (next.status === 'playing') {
+    $('turn-timer').hidden = false;
+    if (next.turnEndsIn === null || next.turnEndsIn === undefined) {
+      stopOnlineTimer();
+      updateTimer(null);
+    } else {
+      startOnlineTimer(next.turnEndsIn, next.turnMs);
+    }
+  } else {
+    stopOnlineTimer();
+    $('turn-timer').hidden = true;
+    updateTimer(0, next.turnMs || 30000);
+  }
+}
+
+async function tryResumeSession() {
+  const session = loadSession();
+  if (!session) return false;
+  if (Date.now() - session.at > SESSION_TTL) {
+    clearSession();
+    return false;
+  }
+  if (readFlag(REPLACED_FLAG) === '1') return false;
+
+  setLoading(true, t('loading'));
+  try {
+    await net.connect();
+    const response = await net.rejoin(session.roomId, session.playerKey);
+    if (!response?.ok || !response.state) {
+      clearSession();
+      setLoading(false);
+      toast(t('rejoinFailed'), 'error', 3000);
+      return false;
+    }
+
+    state.online.roomId = response.roomId || session.roomId;
+    state.online.playerKey = session.playerKey;
+    state.online.roomState = response.state;
+    state.online.pendingMove = null;
+    state.online.finishReason = null;
+    state.online.celebratedKey = null;
+    state.online.lastBoardCount = null;
+
+    saveSession(state.online.roomId, session.playerKey);
+    setLoading(false);
+    setBanner('');
+    applyOnlineState(response.state, { initial: true });
+    return true;
+  } catch {
+    setLoading(false);
+    toast(t('genericError'), 'error', 3200);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Am thanh / cai dat / bang diem
+// ---------------------------------------------------------------------------
+function updateSoundButton() {
+  const button = $('game-sound');
+  if (!button) return;
+  button.textContent = state.settings.sound ? '🔊' : '🔇';
+  button.setAttribute('aria-pressed', String(state.settings.sound));
+  button.setAttribute('aria-label', t('sound'));
+}
+
+function toggleSound() {
+  state.settings.sound = !state.settings.sound;
+  audio.setEnabled(state.settings.sound);
+  if (state.settings.sound) {
+    audio.unlock();
+    audio.play('meow');
+  }
+  saveSettings(state.settings);
+  updateSoundButton();
+  const checkbox = $('set-sound');
+  if (checkbox) checkbox.checked = state.settings.sound;
+}
+
+function populateSettings() {
+  $('set-sound').checked = state.settings.sound;
+  $('set-music').checked = state.settings.music;
+  $('set-motion').checked = state.settings.reduceMotion;
+  $('set-lang').value = state.settings.lang;
+  updateSoundButton();
+}
+
+function applyLanguage(lang) {
+  state.settings.lang = lang === 'en' ? 'en' : 'vi';
+  saveSettings(state.settings);
+  setLang(state.settings.lang);
+  applyI18n(document);
+
+  renderAvatarChoices();
+  renderLobbyProfile();
+  renderScores();
+  updateSoundButton();
+
+  if (state.screen === 'lobby') clearLobbyStatus();
+  if (state.screen === 'room') updateRoomInfo();
+
+  if (state.screen === 'game') {
+    updateModeLabel();
+    if (state.mode === 'online' && state.online.roomState) syncOnlineView();
+    else if (state.game) renderLocalGame();
+  }
+}
+
+function scoreRow({ avatar, name, stats }) {
+  const row = document.createElement('div');
+  row.className = 'score-row';
+
+  const avatarEl = document.createElement('span');
+  avatarEl.className = 'score-avatar';
+  avatarEl.innerHTML = catAvatar(avatar);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'score-name';
+  nameEl.textContent = name;
+
+  const statsEl = document.createElement('span');
+  statsEl.className = 'score-stats';
+
+  for (const stat of stats) {
+    const statEl = document.createElement('span');
+    statEl.className = `stat ${stat.type}`;
+    const value = document.createElement('b');
+    value.textContent = String(stat.value);
+    statEl.append(value, document.createTextNode(stat.label));
+    statsEl.appendChild(statEl);
+  }
+
+  row.append(avatarEl, nameEl, statsEl);
+  return row;
+}
+
+function scoreGroup(title, rows) {
+  const group = document.createElement('div');
+  group.className = 'score-group';
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  group.appendChild(heading);
+  rows.forEach((row) => group.appendChild(row));
+  return group;
+}
+
+function renderScores() {
+  const body = $('scores-body');
+  if (!body) return;
+  body.textContent = '';
+
+  const aiRows = ['easy', 'medium', 'hard'].map((difficulty) => {
+    const record = state.scores.ai[difficulty];
+    return scoreRow({
+      avatar: DIFFICULTY_THEME[difficulty],
+      name: t(difficulty),
+      stats: [
+        { value: record.w, label: t('wins'), type: 'win' },
+        { value: record.d, label: t('draws'), type: 'draw' },
+        { value: record.l, label: t('losses'), type: 'loss' },
+      ],
+    });
+  });
+
+  const localRows = [
+    scoreRow({
+      avatar: currentProfile().avatar,
+      name: displayName('A'),
+      stats: [{ value: state.scores.local.A, label: t('wins'), type: 'win' }],
+    }),
+    scoreRow({
+      avatar: 'gray',
+      name: t('localGuest'),
+      stats: [{ value: state.scores.local.B, label: t('wins'), type: 'win' }],
+    }),
+    scoreRow({
+      avatar: 'calico',
+      name: t('draws'),
+      stats: [{ value: state.scores.local.draw, label: t('draws'), type: 'draw' }],
+    }),
+  ];
+
+  body.append(
+    scoreGroup(t('vsAI'), aiRows),
+    scoreGroup(t('localMode'), localRows)
+  );
+}
+
+function openDialog(id) {
+  const dialog = $(id);
+  if (!dialog) return;
+  if (typeof dialog.showModal === 'function') {
+    if (!dialog.open) dialog.showModal();
+  } else {
+    dialog.setAttribute('open', '');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Copy / share
+// ---------------------------------------------------------------------------
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* roi xuong phuong an du phong */
+  }
+
+  try {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+async function copyRoomCode() {
+  const code = state.online.roomId;
+  if (!code) return;
+  if (await copyText(code)) toast(t('copiedCode'), 'success', 2200);
+  else toast(t('copyFailed'), 'error', 3000);
+}
+
+async function shareRoomLink() {
+  const code = state.online.roomId;
+  if (!code) return;
+  const url = inviteUrl(code);
+  const text = t('shareText', { code });
+
+  if (typeof navigator.share === 'function') {
+    try {
+      await navigator.share({ title: t('shareTitle'), text, url });
+      return;
+    } catch (error) {
+      if (error && error.name === 'AbortError') return;
+    }
+  }
+
+  if (await copyText(url)) toast(t('copiedLink'), 'success', 2400);
+  else toast(t('copyFailed'), 'error', 3000);
+}
+
+// ---------------------------------------------------------------------------
+// Xu ly o co
+// ---------------------------------------------------------------------------
+function handleCell(index) {
+  if (state.mode === 'online') onOnlineCell(index);
+  else if (state.mode === 'ai' || state.mode === 'local') onLocalCell(index);
+}
+
+// ---------------------------------------------------------------------------
+// Gan su kien
+// ---------------------------------------------------------------------------
+function setupHomeEvents() {
+  $('btn-ai').addEventListener('click', openAISetup);
+  $('btn-local').addEventListener('click', () => startLocalGame('A'));
+  $('btn-online').addEventListener('click', enterLobby);
+
+  $('btn-settings').addEventListener('click', () => {
+    populateSettings();
+    openDialog('dialog-settings');
+  });
+  $('btn-howto').addEventListener('click', () => openDialog('dialog-howto'));
+  $('btn-scores').addEventListener('click', () => {
+    renderScores();
+    openDialog('dialog-scores');
+  });
+
+  const nameInput = $('name-input');
+  nameInput.addEventListener('input', () => {
+    const stripped = stripName(nameInput.value);
+    if (nameInput.value !== stripped) nameInput.value = stripped;
+    state.profile.name = stripped;
+    saveProfile({ name: stripped, avatar: state.profile.avatar });
+    renderLobbyProfile();
+  });
+  nameInput.addEventListener('blur', () => {
+    const name = cleanName(nameInput.value) || t('defaultName');
+    nameInput.value = name;
+    state.profile.name = name;
+    saveProfile(currentProfile());
+    renderLobbyProfile();
+  });
+}
+
+function setupSetupEvents() {
+  $('ai-setup-back').addEventListener('click', () => goHome());
+
+  document.querySelectorAll('.difficulty-card').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.ai.difficulty = button.dataset.difficulty || 'easy';
+      updateSetupSelection();
+      audio.play('click');
+    });
+  });
+
+  document.querySelectorAll('#first-row .choice-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.ai.firstChoice = button.dataset.first || 'random';
+      updateSetupSelection();
+      audio.play('click');
+    });
+  });
+
+  $('start-ai').addEventListener('click', startAIGame);
+}
+
+function setupLobbyEvents() {
+  $('lobby-back').addEventListener('click', () => goHome());
+  $('btn-create-room').addEventListener('click', createRoomFlow);
+  $('join-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    joinRoomFlow();
+  });
+
+  const roomInput = $('room-input');
+  roomInput.addEventListener('input', () => {
+    const normalized = normalizeRoomCode(roomInput.value);
+    if (roomInput.value !== normalized) roomInput.value = normalized;
+    if (lobbyStatusKind === 'error') clearLobbyStatus();
+  });
+}
+
+function setupRoomEvents() {
+  $('room-back').addEventListener('click', () => leaveOnlineRoom({ confirm: true }));
+  $('btn-leave-room').addEventListener('click', () => leaveOnlineRoom());
+  $('btn-copy').addEventListener('click', copyRoomCode);
+  $('btn-share').addEventListener('click', shareRoomLink);
+}
+
+function setupGameEvents() {
+  $('game-back').addEventListener('click', () => {
+    if (state.mode === 'online' && state.online.roomId) {
+      leaveOnlineRoom({ confirm: true });
+      return;
+    }
+    goHome();
+  });
+
+  $('game-sound').addEventListener('click', toggleSound);
+
+  document.querySelectorAll('.emote-btn').forEach((button) => {
+    button.addEventListener('click', () => sendEmote(button.dataset.emote));
+  });
+}
+
+function setupDialogs() {
+  document.querySelectorAll('[data-close]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const dialog = $(button.dataset.close);
+      if (dialog) dialog.close();
+    });
+  });
+
+  document.querySelectorAll('dialog.modal').forEach((dialog) => {
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+
+  $('set-sound').addEventListener('change', (event) => {
+    state.settings.sound = event.target.checked;
+    audio.setEnabled(state.settings.sound);
+    if (state.settings.sound) {
+      audio.unlock();
+      audio.play('meow');
+    }
+    saveSettings(state.settings);
+    updateSoundButton();
+  });
+
+  $('set-music').addEventListener('change', (event) => {
+    state.settings.music = event.target.checked;
+    audio.unlock();
+    audio.setMusicEnabled(state.settings.music);
+    saveSettings(state.settings);
+  });
+
+  $('set-motion').addEventListener('change', (event) => {
+    state.settings.reduceMotion = event.target.checked;
+    document.body.classList.toggle('reduce-motion', state.settings.reduceMotion);
+    saveSettings(state.settings);
+  });
+
+  $('set-lang').addEventListener('change', (event) => {
+    applyLanguage(event.target.value);
+  });
+
+  $('btn-reset-scores').addEventListener('click', () => {
+    if (!window.confirm(t('resetConfirm'))) return;
+    state.scores = resetAllScores();
+    renderScores();
+    if (state.screen === 'game' && state.mode === 'local') {
+      setCardsForLocal();
+      updateRecordLocal();
+    } else if (state.screen === 'game' && state.mode === 'ai') {
+      updateRecordLocal();
+    }
+    toast(t('resetDone'), 'success', 2200);
+  });
+}
+
+function setupAudioUnlock() {
+  const unlock = () => {
+    audio.unlock();
+    document.removeEventListener('pointerdown', unlock);
+    document.removeEventListener('keydown', unlock);
+  };
+  document.addEventListener('pointerdown', unlock);
+  document.addEventListener('keydown', unlock);
+}
+
+function setupNetworkWatchers() {
+  window.addEventListener('offline', () => {
+    if (state.online.roomId) setBanner(t('connLost'), 'error');
+  });
+  window.addEventListener('online', () => {
+    if (state.online.roomId) setBanner(t('reconnecting'), 'warn');
+  });
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Khoi dong
+// ---------------------------------------------------------------------------
+async function routeInitial() {
+  const params = new URLSearchParams(window.location.search);
+  const rawRoom = params.get('room');
+  if (rawRoom !== null && rawRoom.trim() !== '') {
+    showScreen('lobby');
+    renderLobbyProfile();
+    const code = normalizeRoomCode(rawRoom);
+    $('room-input').value = code;
+    primeOnline();
+    focusElement(code.length === 5 ? $('btn-join-room') : $('room-input'));
+    return;
+  }
+
+  const resumed = await tryResumeSession();
+  if (!resumed) {
+    showScreen('home');
+    state.screen = 'home';
+  }
+}
+
+function init() {
+  state.profile = loadProfile();
+  state.settings = loadSettings();
+  state.scores = loadScores();
+
+  setLang(state.settings.lang);
+  applyI18n(document);
+  document.body.classList.toggle('reduce-motion', state.settings.reduceMotion);
+
+  audio.setEnabled(state.settings.sound);
+  audio.setMusicEnabled(state.settings.music);
+
+  injectVisuals();
+  renderAvatarChoices();
+  syncNameInput();
+  renderLobbyProfile();
+  populateSettings();
+  renderScores();
+  updateSetupSelection();
+  updateSoundButton();
+
+  initBoard({
+    catFor: (symbol, expression) =>
+      catFace(PIECE_THEME[symbol] || 'orange', expression),
+    labelFor: (index, value) => {
+      const row = Math.floor(index / 3) + 1;
+      const col = (index % 3) + 1;
+      if (!value) return t('cellEmpty', { row, col });
+      return t('cellTakenName', { row, col, name: displayName(value) });
+    },
+    onCell: handleCell,
+  });
+
+  setupHomeEvents();
+  setupSetupEvents();
+  setupLobbyEvents();
+  setupRoomEvents();
+  setupGameEvents();
+  setupDialogs();
+  setupAudioUnlock();
+  setupNetworkWatchers();
+  registerServiceWorker();
+
+  routeInitial();
+}
+
+init();
