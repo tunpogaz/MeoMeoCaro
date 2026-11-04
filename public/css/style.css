@@ -632,6 +632,65 @@ button {
   display: flex;
 }
 
+.size-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(6px, 1.2vw, 10px);
+}
+
+.size-btn {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 10px 4px 8px;
+  font-family: var(--font);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 rgba(74, 52, 38, 0.18);
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.size-btn:hover {
+  transform: translateY(-2px);
+}
+
+.size-btn[aria-pressed='true'] {
+  background: #ffe9c7;
+  box-shadow: 0 0 0 3px rgba(255, 169, 77, 0.5), 0 4px 0 rgba(74, 52, 38, 0.18);
+}
+
+.size-num {
+  font-size: clamp(0.85rem, 2.2vw, 1.05rem);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.size-rule {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.rule-pill {
+  margin: 12px 0 0;
+  padding: 8px 14px;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px dashed var(--line);
+  border-radius: 999px;
+}
+
+#start-local {
+  max-width: 420px;
+  margin: clamp(18px, 3vw, 28px) auto 0;
+  display: flex;
+}
+
 /* --------------------------------------------------------------------------
    Lobby online
    -------------------------------------------------------------------------- */
@@ -867,6 +926,7 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
+  min-width: 0;
   min-height: 62px;
   padding: 6px 10px;
   background: rgba(255, 255, 255, 0.72);
@@ -1040,19 +1100,33 @@ body:not([data-mode='online']) .turn-timer {
 /* --------------------------------------------------------------------------
    Ban co
    -------------------------------------------------------------------------- */
+.game-rule {
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px auto 8px;
+  padding: 5px 14px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+}
+
 .board-wrap {
   position: relative;
-  width: min(92vw, 68vh, 520px);
+  width: min(94vw, 70vh, 640px);
   margin: 4px auto 0;
   isolation: isolate;
 }
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(8px, 1.8vw, 12px);
+  grid-template-columns: repeat(var(--board-size, 3), 1fr);
+  gap: clamp(6px, 1.4vw, 12px);
   aspect-ratio: 1 / 1;
-  padding: clamp(8px, 1.8vw, 12px);
+  padding: clamp(7px, 1.6vw, 12px);
   background:
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.7), transparent 60%),
     #f7e7d2;
@@ -1077,6 +1151,43 @@ body:not([data-mode='online']) .turn-timer {
   overflow: hidden;
   touch-action: manipulation;
   transition: transform 0.14s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.board[data-size='6'] .cell,
+.board[data-size='7'] .cell,
+.board[data-size='8'] .cell {
+  min-width: 0;
+  min-height: 0;
+  border-width: 2px;
+  border-radius: 11px;
+  box-shadow: 0 2px 0 rgba(74, 52, 38, 0.18);
+}
+
+.board[data-size='6'],
+.board[data-size='7'],
+.board[data-size='8'] {
+  gap: clamp(4px, 0.9vw, 8px);
+  padding: clamp(6px, 1.2vw, 10px);
+  border-radius: 22px;
+}
+
+.board[data-size='7'] .cell,
+.board[data-size='8'] .cell {
+  border-radius: 9px;
+}
+
+.board[data-size='8'] .cell .cat-svg {
+  transform: scale(1.04);
+}
+
+.cell.last-move::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 2px dashed rgba(255, 107, 107, 0.85);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: lastMoveGlow 1.2s ease-in-out 2;
 }
 
 .cell:hover:not(:disabled) {
@@ -1462,6 +1573,31 @@ dialog.modal::backdrop {
   gap: 16px;
 }
 
+.scores-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scores-filter-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.scores-size-note {
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px dashed var(--line);
+  border-radius: 999px;
+}
+
 .score-group h3 {
   margin: 0 0 8px;
   font-size: 1.05rem;
@@ -1839,6 +1975,16 @@ dialog.modal::backdrop {
   }
 }
 
+@keyframes lastMoveGlow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
@@ -1874,6 +2020,10 @@ dialog.modal::backdrop {
     grid-template-columns: 1fr;
   }
 
+  .size-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .difficulty-card {
     grid-template-columns: auto 1fr;
     justify-items: start;
@@ -1893,7 +2043,7 @@ dialog.modal::backdrop {
 
 @media (max-width: 640px) {
   .players-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     width: 100%;
   }
 
@@ -1937,13 +2087,42 @@ dialog.modal::backdrop {
   }
 
   .board-wrap {
-    width: min(94vw, 62vh, 480px);
+    width: min(94vw, 64vh, 520px);
   }
 
   .screen {
     padding: 14px 14px 22px;
   }
+}
 
+@media (max-width: 350px) {
+  .p-avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .player-card {
+    gap: 5px;
+    padding: 4px 6px;
+  }
+
+  .p-name {
+    font-size: 0.82rem;
+  }
+
+  .p-tag {
+    font-size: 0.68rem;
+  }
+
+  .p-score {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 4px;
+    font-size: 0.74rem;
+  }
+}
+
+@media (max-width: 640px) {
   .mode-icon {
     width: 42px;
     height: 42px;

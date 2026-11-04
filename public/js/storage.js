@@ -5,6 +5,7 @@
 
 const PREFIX = 'mmc.';
 const memory = new Map();
+const SIZES = [3, 4, 5, 6, 7, 8];
 
 let localStore = null;
 try {
@@ -69,6 +70,10 @@ function setJSON(key, value) {
   }
 }
 
+function validSize(size) {
+  return Number.isInteger(size) && SIZES.includes(size);
+}
+
 // ---------------------------------------------------------------------------
 // Profile
 // ---------------------------------------------------------------------------
@@ -99,6 +104,7 @@ const DEFAULT_SETTINGS = {
   music: false,
   lang: 'vi',
   reduceMotion: false,
+  boardSize: 3,
 };
 
 export function loadSettings() {
@@ -108,6 +114,7 @@ export function loadSettings() {
     music: typeof saved.music === 'boolean' ? saved.music : DEFAULT_SETTINGS.music,
     lang: saved.lang === 'en' ? 'en' : 'vi',
     reduceMotion: saved.reduceMotion === true,
+    boardSize: validSize(saved.boardSize) ? saved.boardSize : DEFAULT_SETTINGS.boardSize,
   };
 }
 
@@ -117,14 +124,23 @@ export function saveSettings(settings) {
     music: settings.music === true,
     lang: settings.lang === 'en' ? 'en' : 'vi',
     reduceMotion: settings.reduceMotion === true,
+    boardSize: validSize(settings.boardSize) ? settings.boardSize : DEFAULT_SETTINGS.boardSize,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Diem so
+// Diem so theo co ban
 // ---------------------------------------------------------------------------
-function emptyAIScore() {
+function emptyAI() {
   return { w: 0, d: 0, l: 0 };
+}
+
+function emptyAISet() {
+  return { easy: emptyAI(), medium: emptyAI(), hard: emptyAI() };
+}
+
+function emptyLocal() {
+  return { A: 0, B: 0, draw: 0 };
 }
 
 function cleanRecord(record) {
@@ -135,33 +151,73 @@ function cleanRecord(record) {
   };
 }
 
+function cleanCount(value) {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function cleanLocal(record) {
+  return {
+    A: cleanCount(record?.A),
+    B: cleanCount(record?.B),
+    draw: cleanCount(record?.draw),
+  };
+}
+
 export function loadScores() {
   const saved = getJSON(`${PREFIX}scores`, {});
-  const ai = saved.ai || {};
-  const local = saved.local || {};
-  return {
-    ai: {
-      easy: cleanRecord(ai.easy),
-      medium: cleanRecord(ai.medium),
-      hard: cleanRecord(ai.hard),
-    },
-    local: {
-      A: Number.isFinite(local.A) && local.A > 0 ? Math.floor(local.A) : 0,
-      B: Number.isFinite(local.B) && local.B > 0 ? Math.floor(local.B) : 0,
-      draw: Number.isFinite(local.draw) && local.draw > 0 ? Math.floor(local.draw) : 0,
-    },
-  };
+  const aiRoot = saved && typeof saved.ai === 'object' && saved.ai ? saved.ai : {};
+  const localRoot = saved && typeof saved.local === 'object' && saved.local ? saved.local : {};
+
+  // Kieu cu: ai.easy / local.A nam truc tiep o goc.
+  const legacyAI =
+    aiRoot.easy || aiRoot.medium || aiRoot.hard
+      ? { easy: aiRoot.easy, medium: aiRoot.medium, hard: aiRoot.hard }
+      : null;
+  const legacyLocal =
+    localRoot.A !== undefined || localRoot.B !== undefined || localRoot.draw !== undefined
+      ? { A: localRoot.A, B: localRoot.B, draw: localRoot.draw }
+      : null;
+
+  const scores = { ai: {}, local: {} };
+  for (const size of SIZES) {
+    const savedAI = aiRoot[size] || {};
+    const savedLocal = localRoot[size] || {};
+    scores.ai[size] = {
+      easy: cleanRecord(savedAI.easy || (size === 3 ? legacyAI?.easy : null)),
+      medium: cleanRecord(savedAI.medium || (size === 3 ? legacyAI?.medium : null)),
+      hard: cleanRecord(savedAI.hard || (size === 3 ? legacyAI?.hard : null)),
+    };
+    const localSource = savedLocal.A !== undefined ? savedLocal : size === 3 ? legacyLocal : null;
+    scores.local[size] = cleanLocal(localSource);
+  }
+
+  if (legacyAI || legacyLocal) setJSON(`${PREFIX}scores`, scores);
+  return scores;
 }
 
 export function saveScores(scores) {
   setJSON(`${PREFIX}scores`, scores);
 }
 
-export function resetAllScores() {
-  const cleared = {
-    ai: { easy: emptyAIScore(), medium: emptyAIScore(), hard: emptyAIScore() },
-    local: { A: 0, B: 0, draw: 0 },
+/** Xoa diem cua mot co ban, giu nguyen cac co ban khac. */
+export function resetScoresForSize(scores, size) {
+  const safeSize = validSize(size) ? size : 3;
+  const next = {
+    ai: { ...(scores?.ai || {}) },
+    local: { ...(scores?.local || {}) },
   };
+  next.ai[safeSize] = emptyAISet();
+  next.local[safeSize] = emptyLocal();
+  saveScores(next);
+  return next;
+}
+
+export function resetAllScores() {
+  const cleared = { ai: {}, local: {} };
+  for (const size of SIZES) {
+    cleared.ai[size] = emptyAISet();
+    cleared.local[size] = emptyLocal();
+  }
   saveScores(cleared);
   return cleared;
 }

@@ -14,6 +14,8 @@ let labelFor = null;
 let onCell = null;
 
 let focusIndex = 0;
+let boardSize = 3;
+let boardBound = false;
 let lastInputWasKeyboard = false;
 let lastWinLine = null;
 let resizeObserver = null;
@@ -101,13 +103,13 @@ function onKeyDown(event) {
 
   event.preventDefault();
   lastInputWasKeyboard = true;
-  const row = Math.floor(index / 3);
-  const col = index % 3;
+  const row = Math.floor(index / boardSize);
+  const col = index % boardSize;
   for (let step = 1; step <= 2; step += 1) {
-    const nr = Math.min(2, Math.max(0, row + dRow * step));
-    const nc = Math.min(2, Math.max(0, col + dCol * step));
-    const next = nr * 3 + nc;
-    if (next === index) break;
+    const nr = row + dRow * step;
+    const nc = col + dCol * step;
+    if (nr < 0 || nr >= boardSize || nc < 0 || nc >= boardSize) break;
+    const next = nr * boardSize + nc;
     if (!cells[next].disabled) {
       setTabIndex(next);
       cells[next].focus({ preventScroll: true });
@@ -125,57 +127,88 @@ export function initBoard(options) {
   onCell = options.onCell;
 
   if (!boardEl) return;
+
+  if (!boardBound) {
+    boardBound = true;
+    boardEl.addEventListener('pointerdown', () => {
+      lastInputWasKeyboard = false;
+    });
+    boardEl.addEventListener('keydown', () => {
+      lastInputWasKeyboard = true;
+    });
+  }
+
+  setBoardSize(options.size || 3);
+
+  if (!resizeObserver) {
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(() => {
+        if (lastWinLine) drawWinLine(lastWinLine, false);
+      });
+      resizeObserver.observe(boardEl);
+    } else {
+      window.addEventListener('resize', () => {
+        if (lastWinLine) drawWinLine(lastWinLine, false);
+      });
+    }
+  }
+}
+
+/** Dung lai luoi NxN voi vi tri grid tuong minh (khong de trinh duyet tu xep). */
+export function setBoardSize(size) {
+  const safe = Number.isInteger(size) && size >= 3 && size <= 8 ? size : 3;
+  boardSize = safe;
+  if (!boardEl) return;
+
   boardEl.innerHTML = '';
   cells = [];
+  focusIndex = 0;
+  boardEl.style.setProperty('--board-size', String(safe));
+  boardEl.dataset.size = String(safe);
+  boardEl.classList.toggle('board-compact', safe >= 6);
+  clearWinLine();
 
-  for (let i = 0; i < 9; i += 1) {
+  for (let i = 0; i < safe * safe; i += 1) {
+    const row = Math.floor(i / safe);
+    const col = i % safe;
     const cell = document.createElement('button');
     cell.type = 'button';
     cell.className = 'cell';
     cell.dataset.index = String(i);
     cell.dataset.raw = '';
+    cell.style.gridRow = String(row + 1);
+    cell.style.gridColumn = String(col + 1);
     cell.innerHTML = '<span class="cell-cat"></span><span class="cell-ghost" aria-hidden="true"></span>';
     cell.tabIndex = i === 0 ? 0 : -1;
     cell.addEventListener('click', () => {
       if (cell.disabled) return;
       const keyboard = lastInputWasKeyboard;
-      onCell(i);
+      if (onCell) onCell(i);
       if (keyboard) focusFirstCell();
     });
     cell.addEventListener('keydown', onKeyDown);
     boardEl.appendChild(cell);
     cells.push(cell);
   }
-
-  boardEl.addEventListener('pointerdown', () => {
-    lastInputWasKeyboard = false;
-  });
-  boardEl.addEventListener('keydown', () => {
-    lastInputWasKeyboard = true;
-  });
-
-  if ('ResizeObserver' in window) {
-    resizeObserver = new ResizeObserver(() => {
-      if (lastWinLine) drawWinLine(lastWinLine, false);
-    });
-    resizeObserver.observe(boardEl);
-  } else {
-    window.addEventListener('resize', () => {
-      if (lastWinLine) drawWinLine(lastWinLine, false);
-    });
-  }
 }
 
 /**
  * Ve lai ban co.
  * @param {Array} board
- * @param {{locked?: boolean, preview?: 'A'|'B'|null, expressionFor?: (symbol:string)=>string}} options
+ * @param {{locked?: boolean, preview?: 'A'|'B'|null, expressionFor?: (symbol:string)=>string,
+ *          lastMove?: number|null}} options
  */
 export function renderBoard(board, options = {}) {
   if (!boardEl) return;
+  const inferred = Math.sqrt(board.length);
+  if (Number.isInteger(inferred) && inferred >= 3 && inferred <= 8 && inferred !== boardSize) {
+    setBoardSize(inferred);
+  }
+
   const locked = options.locked === true;
   const preview = options.preview || null;
   const expressionFor = options.expressionFor || null;
+  const lastMove = Number.isInteger(options.lastMove) ? options.lastMove : null;
 
   cells.forEach((cell, i) => {
     const value = board[i];
@@ -204,7 +237,8 @@ export function renderBoard(board, options = {}) {
 
     cell.disabled = locked;
     cell.classList.toggle('filled', Boolean(value));
-    cell.setAttribute('aria-label', labelFor(i, value));
+    cell.classList.toggle('last-move', lastMove === i);
+    if (labelFor) cell.setAttribute('aria-label', labelFor(i, value));
   });
 
   boardEl.classList.toggle('locked', locked);
@@ -247,7 +281,7 @@ function drawWinLine(line, animate) {
 
   winSvg.setAttribute('viewBox', `0 0 ${wrapRect.width} ${wrapRect.height}`);
   const a = centerOf(line[0]);
-  const b = centerOf(line[2]);
+  const b = centerOf(line[line.length - 1]);
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -256,11 +290,14 @@ function drawWinLine(line, animate) {
   const nx = -uy;
   const ny = ux;
 
-  const overhang = Math.min(18, len * 0.12);
-  const x0 = a.x - ux * overhang;
-  const y0 = a.y - uy * overhang;
-  const x1 = b.x + ux * overhang;
-  const y1 = b.y + uy * overhang;
+  const overhang = Math.min(10, len * 0.08);
+  const pad = 4;
+  const clampX = (value) => Math.max(pad, Math.min(wrapRect.width - pad, value));
+  const clampY = (value) => Math.max(pad, Math.min(wrapRect.height - pad, value));
+  const x0 = clampX(a.x - ux * overhang);
+  const y0 = clampY(a.y - uy * overhang);
+  const x1 = clampX(b.x + ux * overhang);
+  const y1 = clampY(b.y + uy * overhang);
 
   const amp = Math.min(13, len * 0.06);
   const c1x = x0 + (x1 - x0) / 3 + nx * amp;
@@ -303,7 +340,7 @@ function drawWinLine(line, animate) {
 }
 
 export function showWinLine(line) {
-  if (!line || line.length !== 3 || !cells.length) {
+  if (!line || line.length < 2 || !cells.length) {
     clearWinLine();
     return;
   }

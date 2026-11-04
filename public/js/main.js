@@ -10,7 +10,7 @@ import {
   saveSettings,
   loadScores,
   saveScores,
-  resetAllScores,
+  resetScoresForSize,
   loadSession,
   saveSession,
   clearSession,
@@ -28,6 +28,7 @@ import {
 import * as audio from './audio.js';
 import {
   initBoard,
+  setBoardSize,
   renderBoard,
   setBoardLabel,
   resetBoardFocus,
@@ -44,11 +45,21 @@ import {
   showSleepZ,
   updateTimer,
 } from './ui.js';
-import { createBoard, getResult, place, otherPlayer } from './game-core.js';
-import { chooseMove } from './ai.js';
+import {
+  BOARD_CONFIGS,
+  createBoard,
+  getResult,
+  isValidSize,
+  place,
+  otherPlayer,
+  winLengthFor,
+} from './game-core.js';
+import { createAIClient } from './ai-client.js';
 import { OnlineClient } from './online.js';
 
-const SCREENS = ['home', 'ai-setup', 'lobby', 'room', 'game'];
+const SCREENS = ['home', 'ai-setup', 'local-setup', 'lobby', 'room', 'game'];
+const BOARD_SIZES = Object.keys(BOARD_CONFIGS).map(Number);
+const AI_SEARCH_TIME = 800;
 const PIECE_THEME = { A: 'orange', B: 'gray' };
 const DIFFICULTY_THEME = { easy: 'cream', medium: 'gray', hard: 'tabby' };
 const EMOTES = new Set(['😺', '😹', '😿', '🐟', '🧶', '👏']);
@@ -71,6 +82,7 @@ const ERROR_KEY_BY_CODE = {
   roomNotFound: 'roomNotFound',
   roomFull: 'roomFull',
   invalidCode: 'invalidCode',
+  invalidSize: 'invalidSize',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -81,6 +93,7 @@ const state = {
   profile: loadProfile(),
   settings: loadSettings(),
   scores: loadScores(),
+  scoreViewSize: 3,
   game: null,
   ai: {
     difficulty: 'easy',
@@ -88,6 +101,7 @@ const state = {
     symbol: 'B',
     thinking: false,
     timer: null,
+    token: 0,
   },
   online: {
     roomId: null,
@@ -119,6 +133,8 @@ const net = new OnlineClient({
   onConnectError: handleOnlineConnectError,
   onEvent: handleOnlineEvent,
 });
+
+const aiClient = createAIClient();
 
 // ---------------------------------------------------------------------------
 // Tien ich
@@ -196,6 +212,69 @@ function prefersReducedMotion() {
 }
 
 // ---------------------------------------------------------------------------
+// Chon co ban
+// ---------------------------------------------------------------------------
+function renderSizeGrid(id) {
+  const grid = $(id);
+  if (!grid) return;
+  grid.textContent = '';
+
+  for (const size of BOARD_SIZES) {
+    const need = winLengthFor(size);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'size-btn';
+    button.dataset.size = String(size);
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', t('sizeAria', { size, n: need }));
+
+    const number = document.createElement('span');
+    number.className = 'size-num';
+    number.textContent = `${size}×${size}`;
+
+    const rule = document.createElement('small');
+    rule.className = 'size-rule';
+    rule.textContent = t('sizeRuleShort', { n: need });
+
+    button.append(number, rule);
+    button.addEventListener('click', () => selectBoardSize(size));
+    grid.appendChild(button);
+  }
+}
+
+function selectBoardSize(size) {
+  if (!isValidSize(size)) {
+    toast(t('invalidSize'), 'error', 2200);
+    return;
+  }
+  state.settings.boardSize = size;
+  saveSettings(state.settings);
+  updateSizePickers();
+  audio.play('click');
+}
+
+function updateSizePickers() {
+  const size = state.settings.boardSize;
+  const need = winLengthFor(size);
+
+  document.querySelectorAll('.size-btn').forEach((button) => {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.size) === size));
+  });
+
+  for (const id of ['ai-rule', 'local-rule', 'lobby-rule']) {
+    const el = $(id);
+    if (el) el.textContent = t('winRuleShort', { size, n: need });
+  }
+}
+
+function renderAllSizeGrids() {
+  renderSizeGrid('ai-size-grid');
+  renderSizeGrid('local-size-grid');
+  renderSizeGrid('lobby-size-grid');
+  updateSizePickers();
+}
+
+// ---------------------------------------------------------------------------
 // Dieu huong
 // ---------------------------------------------------------------------------
 function showScreen(name) {
@@ -238,11 +317,26 @@ function openAISetup() {
   $('emote-bar').hidden = true;
   clearEmoteBubbles();
   updateSetupSelection();
+  updateSizePickers();
   showScreen('ai-setup');
   const selected = document.querySelector(
     `.difficulty-card[data-difficulty="${state.ai.difficulty}"]`
   );
   focusElement(selected);
+}
+
+function openLocalSetup() {
+  exitLocalGame();
+  setMode('');
+  setBanner('');
+  $('emote-bar').hidden = true;
+  clearEmoteBubbles();
+  updateSizePickers();
+  showScreen('local-setup');
+  const selected = document.querySelector(
+    `#local-size-grid .size-btn[data-size="${state.settings.boardSize}"]`
+  );
+  focusElement(selected || $('start-local'));
 }
 
 function enterLobby() {
@@ -253,6 +347,7 @@ function enterLobby() {
   clearEmoteBubbles();
   renderLobbyProfile();
   clearLobbyStatus();
+  updateSizePickers();
   showScreen('lobby');
   focusElement($('btn-create-room'));
   primeOnline();
@@ -388,12 +483,13 @@ function setCardsForLocal() {
   const finished = game.finished;
   const draw = game.draw === true;
   const winner = game.winner;
+  const local = state.scores.local[game.size] || { A: 0, B: 0, draw: 0 };
 
   setPlayerCard('left', {
     name: displayName('A'),
     avatar: state.profile.avatar,
     tag: `${t('youBadge')} · ${t('orangeCat')}`,
-    score: state.mode === 'local' ? state.scores.local.A : null,
+    score: state.mode === 'local' ? local.A : null,
     active: !finished && game.turn === 'A',
     winner: finished && !draw && winner === 'A',
     loser: finished && !draw && winner === 'B',
@@ -404,7 +500,7 @@ function setCardsForLocal() {
     name: aiMode ? t('aiName') : t('localGuest'),
     avatar: 'gray',
     tag: t('grayCat'),
-    score: state.mode === 'local' ? state.scores.local.B : null,
+    score: state.mode === 'local' ? local.B : null,
     active: !finished && game.turn === 'B',
     winner: finished && !draw && winner === 'B',
     loser: finished && !draw && winner === 'A',
@@ -425,10 +521,11 @@ function updateRecordLocal() {
     return;
   }
   if (state.mode === 'ai') {
-    const record = state.scores.ai[state.ai.difficulty] || { w: 0, d: 0, l: 0 };
+    const record =
+      state.scores.ai[state.game.size]?.[state.ai.difficulty] || { w: 0, d: 0, l: 0 };
     el.textContent = t('recordAI', record);
   } else {
-    const local = state.scores.local;
+    const local = state.scores.local[state.game.size] || { A: 0, B: 0, draw: 0 };
     el.textContent = t('recordLocalFull', {
       a: displayName('A'),
       wa: local.A,
@@ -518,7 +615,7 @@ function actionsForLocal() {
       label: t('playAgain'),
       handler: () => {
         if (aiMode) startAIGame();
-        else startLocalGame(state.game?.starter || 'A');
+        else startLocalGame(state.game?.starter || 'A', state.game?.size);
       },
     },
     secondary: aiMode
@@ -530,7 +627,7 @@ function actionsForLocal() {
           label: t('swapStarter'),
           handler: () => {
             const nextStarter = state.game?.starter === 'A' ? 'B' : 'A';
-            startLocalGame(nextStarter);
+            startLocalGame(nextStarter, state.game?.size);
           },
         },
     tertiary: {
@@ -540,12 +637,14 @@ function actionsForLocal() {
   };
 }
 
-function enterGameScreen(mode) {
+function enterGameScreen(mode, size) {
   cancelAiTimer();
   setMode(mode);
+  setBoardSize(size);
   updateModeLabel();
   updateSoundButton();
-  setBoardLabel(t('boardLabel'));
+  setBoardLabel(t('boardLabel', { size }));
+  $('game-rule').textContent = t('winRule', { n: winLengthFor(size) });
   $('emote-bar').hidden = mode !== 'online';
   $('game-record').hidden = true;
   $('result-card').hidden = true;
@@ -564,6 +663,8 @@ function enterGameScreen(mode) {
 // Choi voi may / 2 nguoi cung may
 // ---------------------------------------------------------------------------
 function cancelAiTimer() {
+  state.ai.token += 1;
+  aiClient.cancel();
   if (state.ai.timer !== null) {
     window.clearTimeout(state.ai.timer);
     state.ai.timer = null;
@@ -583,6 +684,7 @@ function exitLocalGame() {
 function startAIGame() {
   cancelAiTimer();
   state.game = null;
+  const size = state.settings.boardSize;
   const first =
     state.ai.firstChoice === 'random'
       ? Math.random() < 0.5
@@ -593,16 +695,19 @@ function startAIGame() {
         : 'B';
 
   state.game = {
-    board: createBoard(),
+    size,
+    winLength: winLengthFor(size),
+    board: createBoard(size),
     turn: first,
     starter: first,
     finished: false,
     winner: null,
     winLine: null,
     draw: false,
+    lastMove: null,
   };
 
-  enterGameScreen('ai');
+  enterGameScreen('ai', size);
   renderLocalGame();
   focusFirstCell();
   audio.play('join');
@@ -610,19 +715,24 @@ function startAIGame() {
   if (first === 'B') scheduleAIMove();
 }
 
-function startLocalGame(starter = 'A') {
+function startLocalGame(starter = 'A', size = state.settings.boardSize) {
   cancelAiTimer();
+  const safeSize = isValidSize(size) ? size : state.settings.boardSize;
+  const first = starter === 'B' ? 'B' : 'A';
   state.game = {
-    board: createBoard(),
-    turn: starter === 'B' ? 'B' : 'A',
-    starter: starter === 'B' ? 'B' : 'A',
+    size: safeSize,
+    winLength: winLengthFor(safeSize),
+    board: createBoard(safeSize),
+    turn: first,
+    starter: first,
     finished: false,
     winner: null,
     winLine: null,
     draw: false,
+    lastMove: null,
   };
 
-  enterGameScreen('local');
+  enterGameScreen('local', safeSize);
   renderLocalGame();
   focusFirstCell();
   audio.play('join');
@@ -640,8 +750,10 @@ function renderLocalGame() {
     locked,
     preview,
     expressionFor: (symbol) => expressionForFinished(game, symbol),
+    lastMove: game.lastMove,
   });
-  setBoardLabel(t('boardLabel'));
+  setBoardLabel(t('boardLabel', { size: game.size }));
+  $('game-rule').textContent = t('winRule', { n: game.winLength });
   setCardsForLocal();
   updateRecordLocal();
   updateModeLabel();
@@ -693,10 +805,11 @@ function onLocalCell(index) {
 function playLocalMove(symbol, index) {
   const game = state.game;
   if (!game || game.finished || game.turn !== symbol) return false;
-  if (!place(game.board, index, symbol)) return false;
+  if (!place(game.board, index, symbol, game.size)) return false;
+  game.lastMove = index;
 
   audio.play('meow');
-  const result = getResult(game.board);
+  const result = getResult(game.board, game.size, game.winLength);
 
   if (result.finished) {
     finishLocalRound(result);
@@ -722,13 +835,14 @@ function finishLocalRound(result) {
   cancelAiTimer();
 
   if (state.mode === 'ai') {
-    const record = state.scores.ai[state.ai.difficulty];
+    const record = state.scores.ai[game.size][state.ai.difficulty];
     if (game.draw) record.d += 1;
     else if (game.winner === 'A') record.w += 1;
     else record.l += 1;
   } else if (state.mode === 'local') {
-    if (game.draw) state.scores.local.draw += 1;
-    else state.scores.local[game.winner] += 1;
+    const local = state.scores.local[game.size];
+    if (game.draw) local.draw += 1;
+    else local[game.winner] += 1;
   }
 
   saveScores(state.scores);
@@ -761,19 +875,57 @@ function scheduleAIMove() {
   state.ai.thinking = true;
   renderLocalGame();
 
-  const delay = 400 + Math.floor(Math.random() * 500);
-  state.ai.timer = window.setTimeout(() => {
+  const token = state.ai.token;
+  const delay = 350 + Math.floor(Math.random() * 400);
+
+  state.ai.timer = window.setTimeout(async () => {
     state.ai.timer = null;
     const current = state.game;
-    if (!current || state.mode !== 'ai' || current.finished || current.turn !== 'B') {
+    if (
+      token !== state.ai.token ||
+      !current ||
+      state.mode !== 'ai' ||
+      current.finished ||
+      current.turn !== 'B'
+    ) {
       state.ai.thinking = false;
       return;
     }
 
-    const index = chooseMove(current.board, 'B', 'A', state.ai.difficulty);
+    const index = await aiClient.choose({
+      board: current.board,
+      me: 'B',
+      opponent: 'A',
+      difficulty: state.ai.difficulty,
+      size: current.size,
+      winLength: current.winLength,
+      timeLimit: AI_SEARCH_TIME,
+    });
+
+    if (token !== state.ai.token) return;
+    const latest = state.game;
+    if (
+      !latest ||
+      latest !== current ||
+      state.mode !== 'ai' ||
+      latest.finished ||
+      latest.turn !== 'B'
+    ) {
+      state.ai.thinking = false;
+      return;
+    }
+
     state.ai.thinking = false;
-    if (index >= 0) playLocalMove('B', index);
-    else renderLocalGame();
+    if (
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < latest.board.length &&
+      latest.board[index] === null
+    ) {
+      playLocalMove('B', index);
+    } else {
+      renderLocalGame();
+    }
   }, delay);
 }
 
@@ -843,7 +995,7 @@ async function createRoomFlow() {
 
   try {
     await net.connect();
-    const response = await net.createRoom(currentProfile());
+    const response = await net.createRoom(currentProfile(), state.settings.boardSize);
     if (!response || response.ok !== true) {
       setLobbyStatus(errorMessageFor(response?.code), 'error');
       return;
@@ -954,10 +1106,16 @@ function showWaitingRoom(next, options = {}) {
 function enterOnlineGameScreen() {
   cancelAiTimer();
   state.game = null;
+  const room = state.online.roomState;
+  const size = isValidSize(room?.size) ? room.size : 3;
   setMode('online');
+  setBoardSize(size);
   updateModeLabel();
   updateSoundButton();
-  setBoardLabel(t('boardLabel'));
+  setBoardLabel(t('boardLabel', { size }));
+  $('game-rule').textContent = t('winRule', {
+    n: room?.winLength || winLengthFor(size),
+  });
   $('emote-bar').hidden = false;
   $('game-record').hidden = true;
   $('result-card').hidden = true;
@@ -1012,6 +1170,7 @@ function syncOnlineView() {
 
   const locked =
     !playing || next.turn !== youSymbol || state.online.pendingMove !== null;
+  const size = isValidSize(next.size) ? next.size : 3;
   renderBoard(next.board, {
     locked,
     preview: playing && next.turn === youSymbol ? youSymbol : null,
@@ -1020,8 +1179,12 @@ function syncOnlineView() {
       if (draw) return 'sleep';
       return symbol === winner ? 'win' : 'lose';
     },
+    lastMove: next.lastMove,
   });
-  setBoardLabel(t('boardLabel'));
+  setBoardLabel(t('boardLabel', { size }));
+  $('game-rule').textContent = t('winRule', {
+    n: next.winLength || winLengthFor(size),
+  });
 
   if (finished && next.winLine) showWinLine(next.winLine);
   else clearWinLine();
@@ -1123,7 +1286,7 @@ function onOnlineCell(index) {
   }
 
   const value = Number(index);
-  if (!Number.isInteger(value) || value < 0 || value > 8) return;
+  if (!Number.isInteger(value) || value < 0 || value >= next.board.length) return;
 
   state.online.pendingMove = value;
   syncOnlineView();
@@ -1386,6 +1549,17 @@ function updateRoomInfo() {
   if (!roomId) return;
   $('room-code').textContent = roomId;
   $('room-link').textContent = inviteUrl(roomId);
+
+  const room = state.online.roomState;
+  const info = $('room-size-info');
+  if (room && isValidSize(room.size)) {
+    info.textContent = t('roomSizeInfo', {
+      size: room.size,
+      n: room.winLength || winLengthFor(room.size),
+    });
+  } else {
+    info.textContent = '';
+  }
 }
 
 function inviteUrl(code) {
@@ -1442,7 +1616,8 @@ function updateOnlineTimer(next) {
   } else {
     stopOnlineTimer();
     $('turn-timer').hidden = true;
-    updateTimer(0, next.turnMs || 30000);
+    const size = isValidSize(next.size) ? next.size : 3;
+    updateTimer(0, next.turnMs || (size >= 5 ? 45000 : 30000));
   }
 }
 
@@ -1526,6 +1701,8 @@ function applyLanguage(lang) {
 
   renderAvatarChoices();
   renderLobbyProfile();
+  renderAllSizeGrids();
+  renderScoreSizeOptions();
   renderScores();
   updateSoundButton();
 
@@ -1577,13 +1754,30 @@ function scoreGroup(title, rows) {
   return group;
 }
 
+function renderScoreSizeOptions() {
+  const select = $('scores-size');
+  if (!select) return;
+  select.textContent = '';
+  for (const size of BOARD_SIZES) {
+    const option = document.createElement('option');
+    option.value = String(size);
+    option.textContent = `${size}×${size} · ${t('sizeRuleShort', { n: winLengthFor(size) })}`;
+    select.appendChild(option);
+  }
+  select.value = String(state.scoreViewSize);
+}
+
 function renderScores() {
   const body = $('scores-body');
   if (!body) return;
   body.textContent = '';
 
+  const size = isValidSize(state.scoreViewSize) ? state.scoreViewSize : 3;
+  const aiBucket = state.scores.ai[size] || {};
+  const localBucket = state.scores.local[size] || { A: 0, B: 0, draw: 0 };
+
   const aiRows = ['easy', 'medium', 'hard'].map((difficulty) => {
-    const record = state.scores.ai[difficulty];
+    const record = aiBucket[difficulty] || { w: 0, d: 0, l: 0 };
     return scoreRow({
       avatar: DIFFICULTY_THEME[difficulty],
       name: t(difficulty),
@@ -1599,24 +1793,32 @@ function renderScores() {
     scoreRow({
       avatar: currentProfile().avatar,
       name: displayName('A'),
-      stats: [{ value: state.scores.local.A, label: t('wins'), type: 'win' }],
+      stats: [{ value: localBucket.A, label: t('wins'), type: 'win' }],
     }),
     scoreRow({
       avatar: 'gray',
       name: t('localGuest'),
-      stats: [{ value: state.scores.local.B, label: t('wins'), type: 'win' }],
+      stats: [{ value: localBucket.B, label: t('wins'), type: 'win' }],
     }),
     scoreRow({
       avatar: 'calico',
       name: t('draws'),
-      stats: [{ value: state.scores.local.draw, label: t('draws'), type: 'draw' }],
+      stats: [{ value: localBucket.draw, label: t('draws'), type: 'draw' }],
     }),
   ];
 
+  const heading = document.createElement('p');
+  heading.className = 'scores-size-note';
+  heading.textContent = t('winRuleShort', { size, n: winLengthFor(size) });
+
   body.append(
+    heading,
     scoreGroup(t('vsAI'), aiRows),
     scoreGroup(t('localMode'), localRows)
   );
+
+  const reset = $('btn-reset-scores');
+  if (reset) reset.textContent = t('resetScoresSize', { size });
 }
 
 function openDialog(id) {
@@ -1698,7 +1900,7 @@ function handleCell(index) {
 // ---------------------------------------------------------------------------
 function setupHomeEvents() {
   $('btn-ai').addEventListener('click', openAISetup);
-  $('btn-local').addEventListener('click', () => startLocalGame('A'));
+  $('btn-local').addEventListener('click', openLocalSetup);
   $('btn-online').addEventListener('click', enterLobby);
 
   $('btn-settings').addEventListener('click', () => {
@@ -1707,6 +1909,7 @@ function setupHomeEvents() {
   });
   $('btn-howto').addEventListener('click', () => openDialog('dialog-howto'));
   $('btn-scores').addEventListener('click', () => {
+    renderScoreSizeOptions();
     renderScores();
     openDialog('dialog-scores');
   });
@@ -1748,6 +1951,11 @@ function setupSetupEvents() {
   });
 
   $('start-ai').addEventListener('click', startAIGame);
+}
+
+function setupLocalSetupEvents() {
+  $('local-setup-back').addEventListener('click', () => goHome());
+  $('start-local').addEventListener('click', () => startLocalGame('A'));
 }
 
 function setupLobbyEvents() {
@@ -1832,17 +2040,25 @@ function setupDialogs() {
   });
 
   $('btn-reset-scores').addEventListener('click', () => {
-    if (!window.confirm(t('resetConfirm'))) return;
-    state.scores = resetAllScores();
+    const size = isValidSize(state.scoreViewSize) ? state.scoreViewSize : 3;
+    if (!window.confirm(t('resetConfirmSize', { size }))) return;
+    state.scores = resetScoresForSize(state.scores, size);
     renderScores();
-    if (state.screen === 'game' && state.mode === 'local') {
+    if (state.screen === 'game' && state.game && state.game.size === size) {
       setCardsForLocal();
       updateRecordLocal();
-    } else if (state.screen === 'game' && state.mode === 'ai') {
-      updateRecordLocal();
     }
-    toast(t('resetDone'), 'success', 2200);
+    toast(t('resetDoneSize', { size }), 'success', 2200);
   });
+
+  const scoresSize = $('scores-size');
+  if (scoresSize) {
+    scoresSize.addEventListener('change', (event) => {
+      const next = Number(event.target.value);
+      state.scoreViewSize = isValidSize(next) ? next : 3;
+      renderScores();
+    });
+  }
 }
 
 function setupAudioUnlock() {
@@ -1912,16 +2128,25 @@ function init() {
   syncNameInput();
   renderLobbyProfile();
   populateSettings();
+  renderAllSizeGrids();
+  renderScoreSizeOptions();
   renderScores();
   updateSetupSelection();
   updateSoundButton();
 
   initBoard({
+    size: state.settings.boardSize,
     catFor: (symbol, expression) =>
       catFace(PIECE_THEME[symbol] || 'orange', expression),
     labelFor: (index, value) => {
-      const row = Math.floor(index / 3) + 1;
-      const col = (index % 3) + 1;
+      const size =
+        state.mode === 'online'
+          ? isValidSize(state.online.roomState?.size)
+            ? state.online.roomState.size
+            : 3
+          : state.game?.size || state.settings.boardSize;
+      const row = Math.floor(index / size) + 1;
+      const col = (index % size) + 1;
       if (!value) return t('cellEmpty', { row, col });
       return t('cellTakenName', { row, col, name: displayName(value) });
     },
@@ -1930,6 +2155,7 @@ function init() {
 
   setupHomeEvents();
   setupSetupEvents();
+  setupLocalSetupEvents();
   setupLobbyEvents();
   setupRoomEvents();
   setupGameEvents();

@@ -152,10 +152,11 @@ export class OnlineClient {
     });
   }
 
-  createRoom(profile) {
+  createRoom(profile, size) {
     return this.#emitAck('room:create', {
       name: profile?.name || '',
       avatar: profile?.avatar || 'orange',
+      size,
     });
   }
 

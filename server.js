@@ -11,6 +11,14 @@ import express from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { Server } from 'socket.io';
+import {
+  DEFAULT_BOARD_SIZE,
+  createBoard,
+  checkWinFromMove,
+  isBoardFull,
+  isValidSize,
+  winLengthFor,
+} from './public/js/game-core.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -80,7 +88,9 @@ app.use((_req, res) => {
 // ---------------------------------------------------------------------------
 const ROOM_TTL = Number(process.env.ROOM_TTL_MS) || 15 * 60 * 1000; // 15 phut
 const RECONNECT_GRACE = Number(process.env.RECONNECT_GRACE_MS) || 60 * 1000; // 60 giay
-const TURN_MS = Number(process.env.TURN_MS) || 30 * 1000; // 30 giay / luot
+// Test co the dat TURN_MS de rut ngan moi co ban; khi chay that:
+// 3x3 - 4x4 = 30 giay, 5x5 - 8x8 = 45 giay.
+const TURN_MS_OVERRIDE = Number(process.env.TURN_MS) > 0 ? Number(process.env.TURN_MS) : null;
 const MAX_ROOMS = 1000;
 const RATE_LIMIT = 10; // toi da 10 su kien / giay / socket
 const EMOTE_COOLDOWN = 2000;
@@ -93,20 +103,13 @@ const AVATARS = new Set(['orange', 'gray', 'calico', 'black', 'cream', 'tabby'])
 const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/;
 
-// 8 duong thang hang (3 hang, 3 cot, 2 cheo) - server tu viet lai, khong import client
-const WIN_LINES = [
-  [0, 1, 2],
-  [3, 4, 5],
-  [6, 7, 8],
-  [0, 3, 6],
-  [1, 4, 7],
-  [2, 5, 8],
-  [0, 4, 8],
-  [2, 4, 6],
-];
-
 /** @type {Map<string, object>} */
 const rooms = new Map();
+
+function turnMsFor(size) {
+  if (TURN_MS_OVERRIDE) return TURN_MS_OVERRIDE;
+  return size >= 5 ? 45_000 : 30_000;
+}
 
 // ---------------------------------------------------------------------------
 // Tien ich
@@ -156,11 +159,15 @@ function uniqueRoomId() {
   return `${Date.now().toString(36).slice(-5).toUpperCase()}`;
 }
 
-function createRoom(id) {
+function createRoom(id, size = DEFAULT_BOARD_SIZE) {
+  const safeSize = isValidSize(size) ? size : DEFAULT_BOARD_SIZE;
   return {
     id,
+    size: safeSize,
+    winLength: winLengthFor(safeSize),
     players: [],
-    board: Array(9).fill(null),
+    board: createBoard(safeSize),
+    lastMove: null,
     turn: 'A',
     status: 'waiting', // waiting | playing | finished
     winner: null,
@@ -209,24 +216,6 @@ function describeRoom(room) {
 }
 
 // ---------------------------------------------------------------------------
-// Kiem tra ket qua (server tu tinh, khong tin client)
-// ---------------------------------------------------------------------------
-function findWinner(board) {
-  for (const line of WIN_LINES) {
-    const [a, b, c] = line;
-    const v = board[a];
-    if (v !== null && v === board[b] && v === board[c]) {
-      return { winner: v, line };
-    }
-  }
-  return { winner: null, line: null };
-}
-
-function isFull(board) {
-  return board.every((cell) => cell !== null);
-}
-
-// ---------------------------------------------------------------------------
 // Gui trang thai
 // ---------------------------------------------------------------------------
 function publicState(room, youKey) {
@@ -235,7 +224,10 @@ function publicState(room, youKey) {
     room.status === 'playing' && room.turnDeadline !== null && bothConnected(room);
   return {
     id: room.id,
+    size: room.size,
+    winLength: room.winLength,
     board: room.board.slice(),
+    lastMove: room.lastMove,
     turn: room.turn,
     status: room.status,
     winner: room.winner,
@@ -249,7 +241,7 @@ function publicState(room, youKey) {
       connected: p.connected,
       isYou: p.playerKey === youKey,
     })),
-    turnMs: TURN_MS,
+    turnMs: turnMsFor(room.size),
     turnEndsIn: canRunTimer ? Math.max(0, room.turnDeadline - now) : null,
     rematchVotes: room.rematchVotes.size,
     youVotedRematch: room.rematchVotes.has(youKey),
@@ -291,14 +283,15 @@ function touch(room) {
 // Vong doi phong / van
 // ---------------------------------------------------------------------------
 function startRound(room, firstSymbol) {
-  room.board = Array(9).fill(null);
+  room.board = createBoard(room.size);
+  room.lastMove = null;
   room.turn = firstSymbol;
   room.starter = firstSymbol;
   room.status = 'playing';
   room.winner = null;
   room.winLine = null;
   room.rematchVotes.clear();
-  room.turnDeadline = bothConnected(room) ? Date.now() + TURN_MS : null;
+  room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
   touch(room);
 }
 
@@ -322,20 +315,21 @@ function finishRound(room, winner, line, reason) {
 
 function applyMove(room, index, symbol) {
   room.board[index] = symbol;
+  room.lastMove = index;
   touch(room);
 
-  const { winner, line } = findWinner(room.board);
-  if (winner) {
-    finishRound(room, winner, line, 'win');
-    return { winner, line, draw: false };
+  const line = checkWinFromMove(room.board, room.size, room.winLength, index);
+  if (line) {
+    finishRound(room, symbol, line, 'win');
+    return { winner: symbol, line, draw: false };
   }
-  if (isFull(room.board)) {
+  if (isBoardFull(room.board)) {
     finishRound(room, 'draw', null, 'draw');
     return { winner: null, line: null, draw: true };
   }
 
   room.turn = symbol === 'A' ? 'B' : 'A';
-  room.turnDeadline = bothConnected(room) ? Date.now() + TURN_MS : null;
+  room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
   sendState(room);
   return { winner: null, line: null, draw: false };
 }
@@ -413,9 +407,15 @@ io.on('connection', (socket) => {
       return replyError(ack, 'roomLimit', 'Server dang ban, thu lai sau nhe!');
     }
 
+    const rawSize = payload?.size;
+    if (rawSize !== undefined && rawSize !== null && !isValidSize(rawSize)) {
+      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 den 8x8.');
+    }
+    const size = rawSize === undefined || rawSize === null ? DEFAULT_BOARD_SIZE : rawSize;
+
     const name = sanitizeName(payload?.name) || 'Mèo Bí Ẩn';
     const avatar = sanitizeAvatar(payload?.avatar);
-    const room = createRoom(uniqueRoomId());
+    const room = createRoom(uniqueRoomId(), size);
     const player = createPlayer(socket, name, avatar, 'A');
     room.players.push(player);
     rooms.set(room.id, room);
@@ -516,7 +516,7 @@ io.on('connection', (socket) => {
 
     // Neu ca hai da ket noi lai va van dang choi -> chay tiep dong ho
     if (room.status === 'playing' && bothConnected(room) && room.turnDeadline === null) {
-      room.turnDeadline = Date.now() + TURN_MS;
+      room.turnDeadline = Date.now() + turnMsFor(room.size);
     }
 
     log('rejoined room', room.id, player.symbol, player.name);
@@ -545,7 +545,7 @@ io.on('connection', (socket) => {
       return replyError(ack, 'notYourTurn', 'Chua den luot ban dau!');
     }
     const index = payload?.index;
-    if (!Number.isInteger(index) || index < 0 || index > 8) {
+    if (!Number.isInteger(index) || index < 0 || index >= room.board.length) {
       sendError(socket, 'invalidMove', 'Nuoc di khong hop le.');
       return replyError(ack, 'invalidMove', 'Nuoc di khong hop le.');
     }
@@ -636,7 +636,7 @@ io.on('connection', (socket) => {
 });
 
 // ---------------------------------------------------------------------------
-// Dong ho luot: het 30 giay tu danh mot nuoc ngau nhien hop le
+// Dong ho luot: het gio tu danh mot nuoc ngau nhien hop le (khong xu thua)
 // ---------------------------------------------------------------------------
 setInterval(() => {
   const now = Date.now();
@@ -646,7 +646,9 @@ setInterval(() => {
     if (now < room.turnDeadline) continue;
 
     const empties = [];
-    for (let i = 0; i < 9; i += 1) if (room.board[i] === null) empties.push(i);
+    for (let i = 0; i < room.board.length; i += 1) {
+      if (room.board[i] === null) empties.push(i);
+    }
     if (!empties.length) continue;
 
     const symbol = room.turn;

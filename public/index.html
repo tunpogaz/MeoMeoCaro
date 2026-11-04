@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#FFF4E0" />
     <meta
       name="description"
-      content="Meo Meo Caro - game cờ ca-rô 3x3 chủ đề mèo: chơi với máy, 2 người cùng máy và online qua mã phòng."
+      content="Meo Meo Caro - game cờ ca-rô 3x3 đến 8x8 chủ đề mèo: chơi với máy, 2 người cùng máy và online qua mã phòng."
     />
     <title>Meo Meo Caro 🐾</title>
 
@@ -113,6 +113,11 @@
           <h2 data-i18n="chooseDifficulty"></h2>
         </header>
 
+        <h3 class="section-title" data-i18n="boardSizeTitle"></h3>
+        <p class="section-hint" data-i18n="boardSizeDesc"></p>
+        <div class="size-grid" id="ai-size-grid" role="group" data-i18n-aria="boardSizeTitle"></div>
+        <p class="rule-pill" id="ai-rule"></p>
+
         <div class="difficulty-grid" id="difficulty-grid">
           <button class="difficulty-card" type="button" data-difficulty="easy" aria-pressed="false">
             <span class="diff-cat" data-cat-theme="cream" aria-hidden="true"></span>
@@ -141,6 +146,22 @@
         <button id="start-ai" class="btn primary wide" type="button" data-i18n="startGame"></button>
       </section>
 
+      <!-- ================= SETUP 2 NGUOI ================= -->
+      <section id="screen-local-setup" class="screen" data-screen="local-setup" hidden>
+        <header class="screen-head">
+          <button id="local-setup-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="localSetupTitle"></h2>
+        </header>
+
+        <div class="lobby-card">
+          <p class="muted" data-i18n="localSetupDesc"></p>
+          <h3 class="section-title" data-i18n="boardSizeTitle"></h3>
+          <div class="size-grid" id="local-size-grid" role="group" data-i18n-aria="boardSizeTitle"></div>
+          <p class="rule-pill" id="local-rule"></p>
+          <button id="start-local" class="btn primary wide" type="button" data-i18n="startGame"></button>
+        </div>
+      </section>
+
       <!-- ================= LOBBY ONLINE ================= -->
       <section id="screen-lobby" class="screen" data-screen="lobby" hidden>
         <header class="screen-head">
@@ -158,6 +179,11 @@
           </div>
 
           <p class="muted" data-i18n="onlineDesc"></p>
+
+          <h3 class="section-title" data-i18n="boardSizeTitle"></h3>
+          <div class="size-grid" id="lobby-size-grid" role="group" data-i18n-aria="boardSizeTitle"></div>
+          <p class="rule-pill" id="lobby-rule"></p>
+          <p class="hint" data-i18n="lobbySizeHint"></p>
 
           <button id="btn-create-room" class="btn primary wide" type="button" data-i18n="createRoom"></button>
 
@@ -194,6 +220,7 @@
           <div class="room-cat" id="room-cat" aria-hidden="true"></div>
           <p class="room-title" data-i18n="waitingTitle"></p>
           <p class="muted" data-i18n="waitingDesc"></p>
+          <p class="rule-pill" id="room-size-info"></p>
 
           <span class="room-label" data-i18n="roomCodeLabel"></span>
           <div class="code-row">
@@ -247,6 +274,8 @@
             <span class="emote-bubble" id="right-bubble" aria-live="polite"></span>
           </div>
         </div>
+
+        <p id="game-rule" class="game-rule" aria-live="polite"></p>
 
         <div class="board-wrap">
           <div id="board" class="board" role="group"></div>
@@ -345,6 +374,10 @@
           <button class="modal-close" type="button" data-close="dialog-scores" data-i18n-aria="close">×</button>
         </header>
         <div class="modal-body">
+          <div class="scores-filter">
+            <label class="scores-filter-label" for="scores-size" data-i18n="scoresForSize"></label>
+            <select class="select" id="scores-size"></select>
+          </div>
           <div class="scores-body" id="scores-body"></div>
           <div class="modal-actions">
             <button id="btn-reset-scores" class="btn ghost small" type="button" data-i18n="resetScores"></button>
