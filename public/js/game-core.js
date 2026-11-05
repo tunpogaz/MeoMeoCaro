@@ -1,19 +1,14 @@
 /**
- * Logic thuan cho ban co 3x3 - 8x8 va ban vo cuc - khong dung DOM.
+ * Logic thuan cho ban co 3x3 va ban vo cuc - khong dung DOM.
  * Dung chung cho AI, giao dien va server (server import truc tiep file nay).
  */
 
 /**
  * Quy tac duy nhat cho moi co ban. Client va server deu doc tu day.
- * size hop le: so nguyen 3..8 hoac chuoi 'infinite'.
+ * size hop le: 3 hoac chuoi 'infinite'.
  */
 export const BOARD_CONFIGS = Object.freeze({
   3: Object.freeze({ winLength: 3 }),
-  4: Object.freeze({ winLength: 4 }),
-  5: Object.freeze({ winLength: 5 }),
-  6: Object.freeze({ winLength: 5 }),
-  7: Object.freeze({ winLength: 5 }),
-  8: Object.freeze({ winLength: 5 }),
 });
 
 /**
@@ -31,7 +26,7 @@ export const INFINITE_SIZE = 'infinite';
 
 export const DEFAULT_BOARD_SIZE = 3;
 export const MIN_BOARD_SIZE = 3;
-export const MAX_BOARD_SIZE = 8;
+export const MAX_BOARD_SIZE = 3;
 
 export function isValidSize(size) {
   return Number.isInteger(size) && BOARD_CONFIGS[size] !== undefined;
@@ -41,7 +36,7 @@ export function isInfiniteSize(size) {
   return size === INFINITE_SIZE;
 }
 
-/** Co ban hop le cho moi che do: 3..8 hoac 'infinite'. */
+/** Co ban hop le cho moi che do: 3 hoac 'infinite'. */
 export function isValidBoardSize(size) {
   return isValidSize(size) || isInfiniteSize(size);
 }

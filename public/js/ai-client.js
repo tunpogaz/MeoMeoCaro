@@ -2,7 +2,7 @@
  * Cau noi giua giao dien va AI.
  *
  * - Ban 3x3 chay truc tiep (rat nhanh, giu nguyen hanh vi cu).
- * - Ban 4x4 - 8x8 va ban vo cuc chay trong Web Worker de khong treo giao dien.
+ * - Ban vo cuc chay trong Web Worker de khong treo giao dien.
  *   Neu trinh duyet khong ho tro Worker, tu dong chay tren luong chinh.
  * - cancel() huy ket qua dang cho (roi man hinh / doi che do).
  */

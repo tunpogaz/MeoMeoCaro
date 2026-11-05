@@ -3,7 +3,9 @@
  * Each suite spawns a real server process on an ephemeral port.
  */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,9 +64,18 @@ async function waitForHealth(port, proc, readLogs) {
 
 async function startServer(extraEnv = {}) {
   const port = await freePort();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mmc-server-test-'));
+  const dbFile = path.join(tmpDir, 'test.db');
   const proc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(port), NODE_ENV: 'test', ...extraEnv },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NODE_ENV: 'test',
+      DATABASE_FILE: dbFile,
+      DISABLE_RATE_LIMIT: '1',
+      ...extraEnv,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -78,32 +89,38 @@ async function startServer(extraEnv = {}) {
     await waitForHealth(port, proc, () => output);
   } catch (err) {
     proc.kill('SIGKILL');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     throw err;
   }
-  return { port, proc, logs: () => output };
+  return { port, proc, logs: () => output, tmpDir };
 }
 
 function stopServer(server) {
   return new Promise((resolve) => {
-    if (!server || !server.proc || server.proc.exitCode !== null) {
+    const cleanup = () => {
+      if (server?.tmpDir) fs.rmSync(server.tmpDir, { recursive: true, force: true });
       resolve();
+    };
+    if (!server || !server.proc || server.proc.exitCode !== null) {
+      cleanup();
       return;
     }
     const timer = setTimeout(() => server.proc.kill('SIGKILL'), 3000);
     server.proc.once('exit', () => {
       clearTimeout(timer);
-      resolve();
+      cleanup();
     });
     server.proc.kill('SIGTERM');
   });
 }
 
-async function connect(port) {
+async function connect(port, headers = {}) {
   const socket = ioClient(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],
     reconnection: false,
     forceNew: true,
     timeout: 5000,
+    extraHeaders: headers,
   });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('socket connect timeout')), 5000);
@@ -496,14 +513,13 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Board-size suite (4x4, 8x8, draws, rejoin, rematch, timers)
+// Board-size suite (3x3 win, rematch, draw, rejection of other sizes)
 // ---------------------------------------------------------------------------
 const sized = await startServer();
 const sizedSockets = [];
-let sized4;
-let sized8;
+let sized3;
 
-async function createPair(port, size) {
+async function createPair(port, size = 3) {
   const host = await connect(port);
   const guest = await connect(port);
   sizedSockets.push(host, guest);
@@ -545,7 +561,7 @@ try {
     const C = await connect(sized.port);
     sizedSockets.push(C);
 
-    for (const size of [9, 2, 3.5, '4']) {
+    for (const size of [9, 2, 4, 5, 6, 7, 8, 3.5, '4']) {
       const res = await request(C, 'room:create', { name: 'Mèo Sai', avatar: 'gray', size });
       assert.equal(res.ok, false, `size ${size} should be rejected`);
       assert.equal(res.code, 'invalidSize');
@@ -564,48 +580,48 @@ try {
     assert.equal(left.ok, true);
   });
 
-  await test('4x4 create/join exposes size, win rule and 30s timer', async () => {
-    const pair = await createPair(sized.port, 4);
-    sized4 = pair;
-    assert.equal(pair.state.size, 4);
-    assert.equal(pair.state.winLength, 4);
-    assert.equal(pair.state.board.length, 16);
+  await test('3x3 create/join exposes size, win rule and 30s timer', async () => {
+    const pair = await createPair(sized.port, 3);
+    sized3 = pair;
+    assert.equal(pair.state.size, 3);
+    assert.equal(pair.state.winLength, 3);
+    assert.equal(pair.state.board.length, 9);
     assert.equal(pair.state.turnMs, 30000);
     assert.ok(pair.starter === 'A' || pair.starter === 'B');
   });
 
-  await test('4x4 win uses a 4-cell win line and lastMove', async () => {
-    const pair = sized4;
+  await test('3x3 win uses a 3-cell win line and lastMove', async () => {
+    const pair = sized3;
     const winner = pair.starter;
     const loser = otherSymbol(winner);
     const winnerSocket = socketFor(pair, winner);
     const loserSocket = socketFor(pair, loser);
     const over = nextEvent(pair.host, 'game:over');
 
-    for (let col = 0; col < 3; col += 1) {
+    for (let col = 0; col < 2; col += 1) {
       await move(winnerSocket, col);
-      await move(loserSocket, 12 + col);
+      await move(loserSocket, 6 + col);
     }
-    await move(winnerSocket, 3);
+    await move(winnerSocket, 2);
 
     const payload = await over;
     assert.equal(payload.winner, winner);
     assert.equal(payload.reason, 'win');
-    assert.deepEqual(payload.winLine, [0, 1, 2, 3]);
+    assert.deepEqual(payload.winLine, [0, 1, 2]);
 
     const finished = await pair.tracker.until(
       (s) => s.status === 'finished',
-      '4x4 finished'
+      '3x3 finished'
     );
-    assert.equal(finished.size, 4);
-    assert.equal(finished.winLength, 4);
-    assert.equal(finished.lastMove, 3);
-    assert.equal(finished.board.length, 16);
+    assert.equal(finished.size, 3);
+    assert.equal(finished.winLength, 3);
+    assert.equal(finished.lastMove, 2);
+    assert.equal(finished.board.length, 9);
     assert.equal(finished.score[winner], 1);
   });
 
-  await test('rematch keeps the 4x4 board size and alternates starter', async () => {
-    const pair = sized4;
+  await test('rematch keeps the 3x3 board size and alternates starter', async () => {
+    const pair = sized3;
     const previousStarter = pair.starter;
     const nextStarter = otherSymbol(previousStarter);
     const restartA = nextEvent(pair.host, 'game:restart');
@@ -623,40 +639,29 @@ try {
 
     const fresh = await pair.tracker.until(
       (s) => s.status === 'playing' && s.board.every((cell) => cell === null),
-      '4x4 fresh round'
+      '3x3 fresh round'
     );
-    assert.equal(fresh.size, 4);
-    assert.equal(fresh.winLength, 4);
-    assert.equal(fresh.board.length, 16);
+    assert.equal(fresh.size, 3);
+    assert.equal(fresh.winLength, 3);
+    assert.equal(fresh.board.length, 9);
     assert.equal(fresh.turn, nextStarter);
     assert.equal(fresh.lastMove, null);
     pair.starter = nextStarter;
   });
 
-  await test('4x4 draw fills the board without a winner', async () => {
-    const drawBoard = [
-      'A', 'A', 'B', 'B',
-      'B', 'B', 'A', 'A',
-      'A', 'A', 'B', 'B',
-      'B', 'B', 'A', 'A',
-    ];
-    const drawPair = await createPair(sized.port, 4);
+  await test('3x3 draw fills the board without a winner', async () => {
+    const starterCells = [0, 1, 6, 5, 8];
+    const secondCells = [4, 2, 3, 7];
+    const drawPair = await createPair(sized.port, 3);
     const over = nextEvent(drawPair.host, 'game:over');
-    const aCells = [];
-    const bCells = [];
-    drawBoard.forEach((value, index) => {
-      if (value === 'A') aCells.push(index);
-      else bCells.push(index);
-    });
+    const starterSocket = socketFor(drawPair, drawPair.starter);
+    const secondSocket = socketFor(drawPair, otherSymbol(drawPair.starter));
 
-    let aIndex = 0;
-    let bIndex = 0;
-    let turn = drawPair.starter;
-    for (let step = 0; step < 16; step += 1) {
-      if (turn === 'A') await move(drawPair.host, aCells[aIndex++]);
-      else await move(drawPair.guest, bCells[bIndex++]);
-      turn = otherSymbol(turn);
+    for (let i = 0; i < 4; i += 1) {
+      await move(starterSocket, starterCells[i]);
+      await move(secondSocket, secondCells[i]);
     }
+    await move(starterSocket, starterCells[4]);
 
     const payload = await over;
     assert.equal(payload.winner, 'draw');
@@ -665,100 +670,22 @@ try {
 
     const finished = await drawPair.tracker.until(
       (s) => s.status === 'finished',
-      '4x4 draw'
+      '3x3 draw'
     );
-    const lastSymbol = otherSymbol(drawPair.starter);
-    const lastCell = lastSymbol === 'A' ? aCells[aCells.length - 1] : bCells[bCells.length - 1];
-    assert.equal(finished.size, 4);
+    assert.equal(finished.size, 3);
     assert.equal(finished.board.every(Boolean), true);
-    assert.equal(finished.lastMove, lastCell);
+    assert.equal(finished.lastMove, 8);
     assert.equal(finished.score.draw, 1);
   });
 
-  await test('8x8 create/join exposes 5-in-a-row and 45s timer', async () => {
-    const pair = await createPair(sized.port, 8);
-    sized8 = pair;
-    assert.equal(pair.state.size, 8);
-    assert.equal(pair.state.winLength, 5);
-    assert.equal(pair.state.board.length, 64);
-    assert.equal(pair.state.turnMs, 45000);
-  });
-
-  await test('8x8 survives F5 rejoin and keeps size, board and lastMove', async () => {
-    const pair = sized8;
-    const winner = pair.starter;
-    const loser = otherSymbol(winner);
-    const winnerSocket = socketFor(pair, winner);
-    const loserSocket = socketFor(pair, loser);
-    await move(winnerSocket, 0);
-    await move(loserSocket, 56);
-    await move(winnerSocket, 1);
-    await move(loserSocket, 57);
-
-    pair.guest.disconnect();
-    await sleep(120);
-
-    const guest2 = await connect(sized.port);
-    sizedSockets.push(guest2);
-    const tracker2 = tracker(guest2);
-    const rejoin = await request(guest2, 'room:rejoin', {
-      roomId: pair.roomId,
-      playerKey: pair.keyGuest,
-    });
-    assert.equal(rejoin.ok, true, JSON.stringify(rejoin));
-    assert.equal(rejoin.state.size, 8);
-    assert.equal(rejoin.state.winLength, 5);
-    assert.equal(rejoin.state.board.length, 64);
-    assert.equal(rejoin.state.lastMove, 57);
-
-    const resumed = await tracker2.until((s) => s.status === 'playing', '8x8 resumed');
-    assert.equal(resumed.size, 8);
-    assert.equal(resumed.board.length, 64);
-    assert.equal(resumed.board[0], winner);
-    assert.equal(resumed.board[57], loser);
-    pair.guest = guest2;
-    pair.tracker = tracker2;
-  });
-
-  await test('8x8 win reports a 5-cell line', async () => {
-    const pair = sized8;
-    const winner = pair.starter;
-    const loser = otherSymbol(winner);
-    const winnerSocket = socketFor(pair, winner);
-    const loserSocket = socketFor(pair, loser);
-    const over = nextEvent(pair.host, 'game:over');
-    await move(winnerSocket, 2);
-    await move(loserSocket, 58);
-    await move(winnerSocket, 3);
-    await move(loserSocket, 59);
-    await move(winnerSocket, 4);
-
-    const payload = await over;
-    assert.equal(payload.winner, winner);
-    assert.deepEqual(payload.winLine, [0, 1, 2, 3, 4]);
-
-    const finished = await pair.tracker.until(
-      (s) => s.status === 'finished',
-      '8x8 finished'
-    );
-    assert.equal(finished.size, 8);
-    assert.equal(finished.winLength, 5);
-    assert.equal(finished.lastMove, 4);
-    assert.equal(finished.score[winner], 1);
-  });
-
-  await test('out-of-range moves are rejected on 4x4 and 8x8', async () => {
+  await test('out-of-range moves are rejected on 3x3', async () => {
     const playingMove = await request(
-      socketFor(sized4, sized4.starter),
+      socketFor(sized3, sized3.starter),
       'game:move',
-      { index: 16 }
+      { index: 9 }
     );
     assert.equal(playingMove.ok, false);
     assert.equal(playingMove.code, 'invalidMove');
-
-    const afterFinish = await request(sized8.guest, 'game:move', { index: 63 });
-    assert.equal(afterFinish.ok, false);
-    assert.equal(afterFinish.code, 'gameNotPlaying');
   });
 } finally {
   for (const socket of sizedSockets) closeSocket(socket);
@@ -1179,25 +1106,24 @@ try {
     assert.equal(auto.status, 'playing');
   });
 
-  await test('8x8 timeout also auto-plays instead of forfeiting', async () => {
+  await test('infinite timeout also auto-plays instead of forfeiting', async () => {
     const T3 = await connect(timed.port);
     const T4 = await connect(timed.port);
     timerSockets.push(T3, T4);
     const stateT3 = tracker(T3);
 
     const created = await request(T3, 'room:create', {
-      name: 'Mèo Tám',
+      name: 'Mèo Vô Cực',
       avatar: 'cream',
-      size: 8,
+      size: 'infinite',
     });
     assert.equal(created.ok, true);
-    assert.equal(created.state.size, 8);
-    assert.equal(created.state.board.length, 64);
+    assert.equal(created.state.size, 'infinite');
     assert.equal(created.state.turnMs, 700);
 
     const joined = await request(T4, 'room:join', {
       roomId: created.roomId,
-      name: 'Mèo Tám Hai',
+      name: 'Mèo Khách Vô Cực',
       avatar: 'tabby',
     });
     assert.equal(joined.ok, true);
@@ -1206,14 +1132,13 @@ try {
     assert.ok(timedOut.symbol === 'A' || timedOut.symbol === 'B');
 
     const auto = await stateT3.until(
-      (s) => s.board.some((cell) => cell !== null),
-      '8x8 auto move',
+      (s) => Array.isArray(s.moves) && s.moves.length > 0,
+      'infinite auto move',
       4000
     );
-    assert.equal(auto.size, 8);
-    assert.equal(auto.board.length, 64);
-    assert.equal(auto.board.filter((cell) => cell !== null).length, 1);
-    assert.equal(auto.board[auto.board.indexOf(timedOut.symbol)], timedOut.symbol);
+    assert.equal(auto.size, 'infinite');
+    assert.equal(auto.moves.length, 1);
+    assert.equal(auto.moves[0].s, timedOut.symbol);
     assert.equal(auto.status, 'playing');
     assert.equal(auto.winner, null);
   });
@@ -1246,6 +1171,93 @@ try {
 } finally {
   closeSocket(rateSocket);
   await stopServer(limited);
+}
+
+// ---------------------------------------------------------------------------
+// Account identity on the socket
+// ---------------------------------------------------------------------------
+const accountServer = await startServer();
+let accountHost;
+let accountRival;
+let accountGuest;
+let hostCookie;
+
+async function registerAccount(port, username, displayName = 'Tên Tài Khoản') {
+  const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}` },
+    body: JSON.stringify({
+      username,
+      password: 'MeowPass123!',
+      displayName,
+      avatar: 'calico',
+    }),
+  });
+  assert.equal(res.status, 201);
+  const cookies =
+    typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie')];
+  const cookie = String(cookies.filter(Boolean).join(';')).split(';')[0];
+  assert.match(cookie, /^mmc_sid=/);
+  return cookie;
+}
+
+try {
+  await test('socket identity comes from the session cookie, not the client name', async () => {
+    hostCookie = await registerAccount(accountServer.port, 'Meo_Socket', 'Mèo Tài Kho');
+    accountHost = await connect(accountServer.port, { Cookie: hostCookie });
+    const created = await request(accountHost, 'room:create', {
+      name: 'Tên Giả',
+      avatar: 'black',
+      size: 3,
+    });
+    assert.equal(created.ok, true);
+    assert.equal(created.state.players[0].name, 'Mèo Tài Kho');
+    assert.equal(created.state.players[0].avatar, 'calico');
+    assert.equal(created.state.players[0].userId, undefined);
+  });
+
+  await test('the same account cannot take both seats', async () => {
+    const cookie = await registerAccount(accountServer.port, 'Meo_Second', 'Mèo Hai');
+    const rivalHost = await connect(accountServer.port, { Cookie: cookie });
+    const created = await request(rivalHost, 'room:create', { name: 'Mèo Hai', size: 3 });
+    assert.equal(created.ok, true);
+    // Reuse the token by opening a second socket for the same account.
+    accountRival = await connect(accountServer.port, { Cookie: cookie });
+    const join = await request(accountRival, 'room:join', {
+      roomId: created.roomId,
+      name: 'Mèo Hai',
+    });
+    assert.equal(join.ok, false);
+    assert.equal(join.code, 'accountInRoom');
+    closeSocket(rivalHost);
+  });
+
+  await test('guests can still join an account room with their own name', async () => {
+    closeSocket(accountHost);
+    accountHost = await connect(accountServer.port, { Cookie: hostCookie });
+    const created = await request(accountHost, 'room:create', {
+      name: 'Tên Giả',
+      size: 3,
+    });
+    assert.equal(created.ok, true);
+    accountGuest = await connect(accountServer.port);
+    const join = await request(accountGuest, 'room:join', {
+      roomId: created.roomId,
+      name: 'Mèo Khách',
+      avatar: 'gray',
+    });
+    assert.equal(join.ok, true);
+    const guest = join.state.players.find((player) => player.symbol === 'B');
+    assert.equal(guest.name, 'Mèo Khách');
+    assert.equal(guest.avatar, 'gray');
+  });
+} finally {
+  closeSocket(accountHost);
+  closeSocket(accountRival);
+  closeSocket(accountGuest);
+  await stopServer(accountServer);
 }
 
 // ---------------------------------------------------------------------------

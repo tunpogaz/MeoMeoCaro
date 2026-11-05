@@ -78,8 +78,20 @@ import {
 } from './game-core.js';
 import { createAIClient } from './ai-client.js';
 import { OnlineClient } from './online.js';
+import { api } from './api.js';
 
-const SCREENS = ['home', 'ai-setup', 'local-setup', 'lobby', 'room', 'game'];
+const SCREENS = [
+  'home',
+  'auth',
+  'profile',
+  'history',
+  'stats',
+  'ai-setup',
+  'local-setup',
+  'lobby',
+  'room',
+  'game',
+];
 const BOARD_SIZES = [...Object.keys(BOARD_CONFIGS).map(Number), INFINITE_SIZE];
 const AI_SEARCH_TIME = 800;
 const PIECE_THEME = { A: 'orange', B: 'gray' };
@@ -108,6 +120,27 @@ const ERROR_KEY_BY_CODE = {
   invalidCoord: 'invalidCoord',
   coordOutsideRegion: 'coordOutsideRegion',
   moveLimit: 'moveLimit',
+  accountInRoom: 'accountInRoom',
+  AUTH_REQUIRED: 'authRequired',
+  INVALID_CREDENTIALS: 'invalidCredentials',
+  USERNAME_TAKEN: 'usernameTaken',
+  INVALID_USERNAME: 'invalidUsername',
+  INVALID_PASSWORD: 'invalidPassword',
+  WEAK_PASSWORD: 'weakPassword',
+  INVALID_AVATAR: 'invalidAvatar',
+  INVALID_DISPLAY_NAME: 'invalidDisplayName',
+  WRONG_PASSWORD: 'wrongPassword',
+  RATE_LIMITED: 'rateLimited',
+  CSRF_REJECTED: 'csrfRejected',
+  INVALID_JSON: 'invalidJson',
+  BODY_TOO_LARGE: 'bodyTooLarge',
+  INVALID_SIZE: 'invalidSize',
+  UNSUPPORTED_MEDIA_TYPE: 'unsupportedMediaType',
+  NOTHING_TO_UPDATE: 'nothingToUpdate',
+  NETWORK: 'networkError',
+  MATCH_NOT_FOUND: 'matchNotFound',
+  INVALID_RESULT_FILTER: 'invalidResultFilter',
+  SERVER_ERROR: 'serverError',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -120,6 +153,13 @@ const state = {
   scores: loadScores(),
   scoreViewSize: 3,
   game: null,
+  account: { user: null, loading: true },
+  auth: { tab: 'login', avatar: 'orange', busy: false },
+  pendingRoom: null,
+  pendingInvite: null,
+  history: { items: [], page: 0, hasMore: false, loading: false, size: '', result: '' },
+  stats: null,
+  replay: { match: null, index: 0, timer: null, speed: 1, playing: false },
   ai: {
     difficulty: 'easy',
     firstChoice: 'random',
@@ -187,6 +227,13 @@ function normalizeRoomCode(raw) {
 }
 
 function currentProfile() {
+  const user = state.account.user;
+  if (user) {
+    return {
+      name: cleanName(user.displayName) || user.username,
+      avatar: AVATAR_KEYS.includes(user.avatar) ? user.avatar : 'orange',
+    };
+  }
   return {
     name: cleanName(state.profile.name) || t('defaultName'),
     avatar: AVATAR_KEYS.includes(state.profile.avatar) ? state.profile.avatar : 'orange',
@@ -199,7 +246,11 @@ function displayName(symbol) {
     if (player?.name) return player.name;
     return symbol === 'A' ? t('orangeCat') : t('grayCat');
   }
-  if (symbol === 'A') return cleanName(state.profile.name) || t('defaultName');
+  if (state.mode === 'replay' && state.replay.match) {
+    const player = state.replay.match.players?.[symbol];
+    if (player) return player.deleted ? t('deletedPlayer') : player.name;
+  }
+  if (symbol === 'A') return currentProfile().name;
   if (state.mode === 'ai') return t('aiName');
   return t('localGuest');
 }
@@ -234,6 +285,925 @@ function writeFlag(key, value) {
 
 function prefersReducedMotion() {
   return state.settings.reduceMotion || document.body.classList.contains('reduce-motion');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function apiErrorMessage(error) {
+  const code = error?.code;
+  if (code === 'RATE_LIMITED' && error.retryAfter) {
+    return t('rateLimitedWait', { s: error.retryAfter });
+  }
+  const key = ERROR_KEY_BY_CODE[code];
+  if (key) return t(key);
+  if (code === 'NETWORK' || code === 'HTTP_0') return t('networkError');
+  return t('serverError');
+}
+
+function setFormMessage(id, message, kind = 'error') {
+  const el = $(id);
+  if (!el) return;
+  el.hidden = !message;
+  el.textContent = message || '';
+  el.className = kind === 'success' ? 'form-success' : 'form-error';
+}
+
+function setAuthBusy(busy) {
+  state.auth.busy = busy;
+  $('login-submit').disabled = busy;
+  $('register-submit').disabled = busy;
+  $('btn-auth-guest').disabled = busy;
+  $('login-submit').textContent = busy ? t('processing') : t('login');
+  $('register-submit').textContent = busy ? t('processing') : t('register');
+}
+
+function passwordStrength(password) {
+  const value = String(password || '');
+  if (!value) return { score: 0, label: '', className: '' };
+  let score = 0;
+  if (value.length >= 8) score += 1;
+  if (value.length >= 12) score += 1;
+  if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score += 1;
+  if (/[0-9]/.test(value)) score += 1;
+  if (/[^A-Za-z0-9]/.test(value)) score += 1;
+  if (score <= 2) return { score: 1, label: t('strengthWeak'), className: 'weak' };
+  if (score <= 4) return { score: 2, label: t('strengthMedium'), className: 'medium' };
+  return { score: 3, label: t('strengthStrong'), className: 'strong' };
+}
+
+function updatePasswordStrength() {
+  const input = $('register-password');
+  const fill = $('password-strength-fill');
+  const text = $('password-strength-text');
+  if (!input || !fill || !text) return;
+  const result = passwordStrength(input.value);
+  fill.className = `strength-fill ${result.className}`;
+  fill.style.width = `${result.score * 33.33}%`;
+  text.textContent = result.label;
+  text.className = `strength-text ${result.className}`;
+}
+
+function showAuthError(kind, message) {
+  setFormMessage(kind === 'login' ? 'login-error' : 'register-error', message, 'error');
+}
+
+function switchAuthTab(tab) {
+  state.auth.tab = tab === 'register' ? 'register' : 'login';
+  const login = state.auth.tab === 'login';
+  $('login-form').hidden = !login;
+  $('register-form').hidden = login;
+  $('auth-tab-login').setAttribute('aria-selected', String(login));
+  $('auth-tab-register').setAttribute('aria-selected', String(!login));
+  showAuthError('login', '');
+  showAuthError('register', '');
+  focusElement(login ? $('login-username') : $('register-username'));
+}
+
+function renderAuthAvatars() {
+  const list = $('auth-avatar-list');
+  if (!list) return;
+  list.textContent = '';
+  AVATAR_KEYS.forEach((key, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'avatar-btn';
+    button.dataset.avatar = key;
+    button.setAttribute('aria-pressed', String(state.auth.avatar === key));
+    button.setAttribute('aria-label', t('avatarAria', { n: index + 1 }));
+    button.innerHTML = catAvatar(key);
+    button.addEventListener('click', () => {
+      state.auth.avatar = key;
+      list.querySelectorAll('.avatar-btn').forEach((item) => {
+        item.setAttribute('aria-pressed', String(item.dataset.avatar === key));
+      });
+    });
+    list.appendChild(button);
+  });
+}
+
+function openAuth(tab = 'login') {
+  showAuthError('login', '');
+  showAuthError('register', '');
+  refreshAuthInviteNote();
+  state.auth.avatar = currentProfile().avatar;
+  renderAuthAvatars();
+  $('login-form').reset();
+  $('register-form').reset();
+  $('login-remember').checked = true;
+  $('register-remember').checked = true;
+  $('register-password').value = '';
+  updatePasswordStrength();
+  showScreen('auth');
+  switchAuthTab(tab);
+}
+
+function refreshAuthInviteNote() {
+  const note = $('auth-invite-note');
+  if (!note) return;
+  if (state.pendingRoom) {
+    note.hidden = false;
+    note.textContent = t('inviteAuthNote', { code: state.pendingRoom });
+  } else {
+    note.hidden = true;
+    note.textContent = '';
+  }
+}
+
+function renderAccountUI() {
+  const user = state.account.user;
+  $('account-guest').hidden = Boolean(user);
+  $('account-signed').hidden = !user;
+  if (user) {
+    $('account-avatar').innerHTML = catAvatar(user.avatar);
+    $('account-display-name').textContent = user.displayName;
+    $('account-username').textContent = `@${user.username}`;
+  }
+
+  const nameInput = $('name-input');
+  if (nameInput) {
+    nameInput.disabled = Boolean(user);
+    nameInput.title = user ? t('nameLocked') : '';
+  }
+  avatarButtons.forEach((button) => {
+    button.disabled = Boolean(user);
+  });
+
+  if (user) {
+    $('profile-avatar-preview').innerHTML = catAvatar(user.avatar);
+    $('profile-display-name').textContent = user.displayName;
+    $('profile-username').textContent = `@${user.username}`;
+  }
+  syncNameInput();
+  renderLobbyProfile();
+}
+
+async function refreshAccount() {
+  state.account.loading = true;
+  try {
+    const response = await api.me();
+    state.account.user = response?.user || null;
+  } catch {
+    state.account.user = null;
+  }
+  state.account.loading = false;
+  renderAccountUI();
+  return state.account.user;
+}
+
+function handleAuthSuccess(user) {
+  state.account.user = user;
+  state.stats = null;
+  renderAccountUI();
+  audio.play('join');
+  toast(t('welcomeUser', { name: user.displayName }), 'success', 2200);
+  const pending = state.pendingRoom;
+  if (pending) {
+    state.pendingRoom = null;
+    openInviteRoom(pending);
+    return;
+  }
+  goHome();
+}
+
+async function logoutAccount() {
+  try {
+    await api.logout();
+  } catch {
+    /* van xoa trang thai tai khoan o client */
+  }
+  state.account.user = null;
+  state.stats = null;
+  state.history = { items: [], page: 0, hasMore: false, loading: false, size: '', result: '' };
+  renderAccountUI();
+  if (['profile', 'history', 'stats', 'auth'].includes(state.screen)) goHome();
+  toast(t('loggedOut'), 'info', 2200);
+}
+
+function openProfile() {
+  if (!state.account.user) {
+    openAuth('login');
+    return;
+  }
+  const user = state.account.user;
+  $('profile-avatar-preview').innerHTML = catAvatar(user.avatar);
+  $('profile-display-name').textContent = user.displayName;
+  $('profile-username').textContent = `@${user.username}`;
+  $('profile-name-input').value = user.displayName;
+  setFormMessage('profile-error', '');
+  setFormMessage('profile-success', '');
+  setFormMessage('password-error', '');
+  setFormMessage('password-success', '');
+  setFormMessage('delete-error', '');
+  $('current-password').value = '';
+  $('new-password').value = '';
+  $('delete-password').value = '';
+  renderProfileAvatars(user.avatar);
+  showScreen('profile');
+  focusElement($('profile-name-input'));
+}
+
+let profileAvatar = 'orange';
+
+function renderProfileAvatars(selected) {
+  profileAvatar = AVATAR_KEYS.includes(selected) ? selected : 'orange';
+  const list = $('profile-avatar-list');
+  if (!list) return;
+  list.textContent = '';
+  AVATAR_KEYS.forEach((key, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'avatar-btn';
+    button.dataset.avatar = key;
+    button.setAttribute('aria-pressed', String(profileAvatar === key));
+    button.setAttribute('aria-label', t('avatarAria', { n: index + 1 }));
+    button.innerHTML = catAvatar(key);
+    button.addEventListener('click', () => {
+      profileAvatar = key;
+      list.querySelectorAll('.avatar-btn').forEach((item) => {
+        item.setAttribute('aria-pressed', String(item.dataset.avatar === key));
+      });
+      $('profile-avatar-preview').innerHTML = catAvatar(key);
+    });
+    list.appendChild(button);
+  });
+}
+
+function sizeLabel(size) {
+  return size === INFINITE_SIZE ? t('scoresInfinite') : `${size}×${size}`;
+}
+
+function resultBadge(outcome) {
+  if (outcome === 'win') return { key: 'wins', className: 'win' };
+  if (outcome === 'loss') return { key: 'losses', className: 'loss' };
+  return { key: 'draws', className: 'draw' };
+}
+
+function formatDate(ms) {
+  try {
+    return new Intl.DateTimeFormat(state.settings.lang === 'en' ? 'en' : 'vi', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toLocaleString();
+  }
+}
+
+function renderHistoryFilters() {
+  const select = $('history-size');
+  if (!select) return;
+  const current = state.history.size;
+  select.textContent = '';
+  const all = document.createElement('option');
+  all.value = '';
+  all.textContent = t('allSizes');
+  select.appendChild(all);
+  for (const size of BOARD_SIZES) {
+    const option = document.createElement('option');
+    option.value = String(size);
+    option.textContent = sizeLabel(size);
+    select.appendChild(option);
+  }
+  select.value = current;
+}
+
+function renderHistory() {
+  const list = $('history-list');
+  if (!list) return;
+  list.textContent = '';
+  const items = state.history.items;
+  $('history-empty').hidden = items.length > 0 || state.history.loading;
+  $('history-more').hidden = !state.history.hasMore;
+
+  for (const match of items) {
+    const row = document.createElement('article');
+    row.className = 'history-row';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'history-avatar';
+    avatar.innerHTML = catAvatar(match.opponent.avatar);
+    avatar.setAttribute('aria-hidden', 'true');
+
+    const copy = document.createElement('div');
+    copy.className = 'history-copy';
+    const name = document.createElement('strong');
+    name.textContent = match.opponent.deleted ? t('deletedPlayer') : match.opponent.name;
+    const meta = document.createElement('small');
+    meta.textContent = `${formatDate(match.endedAt)} · ${sizeLabel(match.size)} · ${t(
+      'replayMoveCount',
+      { n: match.totalMoves }
+    )}`;
+    copy.append(name, meta);
+
+    const badgeInfo = resultBadge(match.outcome);
+    const badge = document.createElement('span');
+    badge.className = `history-badge ${badgeInfo.className}`;
+    badge.textContent = t(badgeInfo.key);
+
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'btn mini secondary';
+    view.textContent = t('viewReplay');
+    view.addEventListener('click', () => openReplay(match.id));
+
+    row.append(avatar, copy, badge, view);
+    list.appendChild(row);
+  }
+}
+
+async function loadHistory(reset = false) {
+  if (!state.account.user) {
+    openAuth('login');
+    return;
+  }
+  if (state.history.loading) return;
+  if (reset) {
+    state.history.items = [];
+    state.history.page = 0;
+    state.history.hasMore = false;
+  }
+  state.history.loading = true;
+  $('history-more').disabled = true;
+  $('history-status').hidden = false;
+  $('history-status').textContent = t('loading');
+  try {
+    const response = await api.history({
+      page: state.history.page + 1,
+      limit: 10,
+      size: state.history.size,
+      result: state.history.result,
+    });
+    state.history.items.push(...(response.items || []));
+    state.history.page = response.page;
+    state.history.hasMore = response.hasMore === true;
+    $('history-status').hidden = true;
+  } catch (error) {
+    $('history-status').hidden = false;
+    $('history-status').textContent = apiErrorMessage(error);
+    if (error.code === 'AUTH_REQUIRED') {
+      state.account.user = null;
+      renderAccountUI();
+      openAuth('login');
+    }
+  } finally {
+    state.history.loading = false;
+    $('history-more').disabled = false;
+    renderHistory();
+    renderHistoryFilters();
+  }
+}
+
+function openHistory() {
+  if (!state.account.user) {
+    openAuth('login');
+    return;
+  }
+  showScreen('history');
+  renderHistoryFilters();
+  loadHistory(true);
+  focusElement($('history-size'));
+}
+
+async function loadStatsPage() {
+  if (!state.account.user) {
+    openAuth('login');
+    return;
+  }
+  const status = $('stats-status');
+  status.hidden = false;
+  status.textContent = t('loading');
+  try {
+    const response = await api.stats();
+    state.stats = response.stats;
+    renderStats();
+    status.hidden = true;
+  } catch (error) {
+    status.textContent = apiErrorMessage(error);
+    if (error.code === 'AUTH_REQUIRED') {
+      state.account.user = null;
+      renderAccountUI();
+      openAuth('login');
+    }
+  }
+}
+
+function statCard(value, label, className = '') {
+  const card = document.createElement('div');
+  card.className = `stat-card ${className}`;
+  const strong = document.createElement('strong');
+  strong.textContent = String(value);
+  const span = document.createElement('span');
+  span.textContent = label;
+  card.append(strong, span);
+  return card;
+}
+
+function renderStats() {
+  const summary = $('stats-summary');
+  const table = $('stats-table');
+  if (!summary || !table) return;
+  summary.textContent = '';
+  table.textContent = '';
+  const stats = state.stats || { total: 0, wins: 0, losses: 0, draws: 0, winRate: 0, bySize: {} };
+  summary.append(
+    statCard(stats.total, t('totalMatches')),
+    statCard(stats.wins, t('wins'), 'win'),
+    statCard(stats.draws, t('draws'), 'draw'),
+    statCard(stats.losses, t('losses'), 'loss'),
+    statCard(`${stats.winRate}%`, t('winRate'))
+  );
+
+  const heading = document.createElement('h3');
+  heading.className = 'section-title';
+  heading.textContent = t('statsBySize');
+  table.appendChild(heading);
+
+  const sizes = [...BOARD_SIZES];
+  for (const size of sizes) {
+    const entry = stats.bySize[String(size)] || { wins: 0, losses: 0, draws: 0 };
+    const total = entry.wins + entry.losses + entry.draws;
+    if (!total) continue;
+    const row = document.createElement('div');
+    row.className = 'stats-row';
+    const label = document.createElement('strong');
+    label.textContent = sizeLabel(size);
+    const detail = document.createElement('span');
+    detail.textContent = `${t('wins')} ${entry.wins} · ${t('draws')} ${
+      entry.draws
+    } · ${t('losses')} ${entry.losses}`;
+    row.append(label, detail);
+    table.appendChild(row);
+  }
+  if (table.children.length === 1) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = t('statsEmpty');
+    table.appendChild(empty);
+  }
+}
+
+function openStats() {
+  if (!state.account.user) {
+    openAuth('login');
+    return;
+  }
+  showScreen('stats');
+  renderStats();
+  loadStatsPage();
+  focusElement($('stats-back'));
+}
+
+const LOCAL_HOST_RE =
+  /^(localhost|127\.0\.0\.1|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i;
+
+function isLocalOnlyHost() {
+  return LOCAL_HOST_RE.test(window.location.hostname);
+}
+
+function inviteUrlFor(code) {
+  return inviteUrl(code);
+}
+
+async function ensureOnline() {
+  if (net.connected) return;
+  const start = Date.now();
+  let delay = 1200;
+  let announced = false;
+  while (Date.now() - start < 90_000) {
+    try {
+      await net.connect();
+      return;
+    } catch {
+      if (state.screen === 'lobby' || state.screen === 'auth') {
+        setLobbyStatus(t('wakingServer'), 'info');
+        announced = true;
+      }
+      await sleep(delay);
+      delay = Math.min(Math.round(delay * 1.6), 10_000);
+    }
+  }
+  if (announced) setLobbyStatus(t('serverAsleep'), 'error');
+  throw new Error('connect-timeout');
+}
+
+function showInviteDialog(room) {
+  $('invite-avatar').innerHTML = catAvatar(room.hostAvatar);
+  $('invite-host').textContent = room.hostName || t('orangeCat');
+  $('invite-size').textContent =
+    room.size === INFINITE_SIZE
+      ? t('roomSizeInfoInfinite')
+      : t('roomSizeInfo', { size: room.size, n: room.winLength });
+  const note = $('invite-note');
+  if (isLocalOnlyHost()) {
+    note.hidden = false;
+    note.textContent = t('inviteLocalNote');
+  } else {
+    note.hidden = true;
+    note.textContent = '';
+  }
+  $('invite-error').hidden = true;
+  $('invite-error').textContent = '';
+  $('invite-join').disabled = room.full === true;
+  if (room.full) {
+    $('invite-error').hidden = false;
+    $('invite-error').textContent = t('roomFull');
+  }
+  state.pendingInvite = room;
+  openDialog('dialog-invite');
+}
+
+async function openInviteRoom(code) {
+  const roomId = normalizeRoomCode(code);
+  if (roomId.length !== 5) {
+    stripRoomParam();
+    goHome({ focus: false });
+    toast(t('invalidCode'), 'error', 3000);
+    return;
+  }
+  showScreen('lobby');
+  renderLobbyProfile();
+  $('room-input').value = roomId;
+  setLobbyStatus(t('connecting'), 'info');
+  try {
+    await ensureOnline();
+    const response = await net.roomInfo(roomId);
+    if (!response?.ok) {
+      clearLobbyStatus();
+      stripRoomParam();
+      goHome({ focus: false });
+      toast(errorMessageFor(response?.code), 'error', 3200);
+      return;
+    }
+    clearLobbyStatus();
+    showInviteDialog(response.room);
+  } catch {
+    setLobbyStatus(t('serverAsleep'), 'error');
+  }
+}
+
+async function joinInviteRoom() {
+  const room = state.pendingInvite;
+  if (!room) return;
+  $('invite-join').disabled = true;
+  $('invite-error').hidden = true;
+  try {
+    await ensureOnline();
+    const response = await net.joinRoom(room.roomId, currentProfile());
+    if (!response?.ok) {
+      $('invite-error').hidden = false;
+      $('invite-error').textContent = errorMessageFor(response?.code);
+      $('invite-join').disabled = false;
+      return;
+    }
+    const dialog = $('dialog-invite');
+    state.pendingInvite = null;
+    if (dialog.open) dialog.close();
+    handleJoinSuccess(response);
+  } catch {
+    $('invite-error').hidden = false;
+    $('invite-error').textContent = t('networkError');
+    $('invite-join').disabled = false;
+  }
+}
+
+function leaveInvite() {
+  const dialog = $('dialog-invite');
+  state.pendingInvite = null;
+  if (dialog.open) dialog.close();
+  state.pendingRoom = null;
+  stripRoomParam();
+  goHome();
+}
+
+// ---------------------------------------------------------------------------
+// Tai khoan
+// ---------------------------------------------------------------------------
+async function loginFlow(event) {
+  event.preventDefault();
+  if (state.auth.busy) return;
+  const username = $('login-username').value.trim();
+  const password = $('login-password').value;
+  showAuthError('login', '');
+  setAuthBusy(true);
+  try {
+    const response = await api.login({
+      username,
+      password,
+      remember: $('login-remember').checked,
+    });
+    $('login-password').value = '';
+    handleAuthSuccess(response.user);
+  } catch (error) {
+    showAuthError('login', apiErrorMessage(error));
+    audio.play('error');
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function registerFlow(event) {
+  event.preventDefault();
+  if (state.auth.busy) return;
+  const username = $('register-username').value.trim();
+  const displayName = $('register-display-name').value.trim();
+  const password = $('register-password').value;
+  showAuthError('register', '');
+  setAuthBusy(true);
+  try {
+    const response = await api.register({
+      username,
+      displayName,
+      password,
+      avatar: state.auth.avatar,
+      remember: $('register-remember').checked,
+    });
+    $('register-password').value = '';
+    updatePasswordStrength();
+    handleAuthSuccess(response.user);
+  } catch (error) {
+    showAuthError('register', apiErrorMessage(error));
+    audio.play('error');
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function guestFlow() {
+  const pending = state.pendingRoom;
+  state.pendingRoom = null;
+  if (pending) {
+    openInviteRoom(pending);
+    return;
+  }
+  stripRoomParam();
+  goHome();
+}
+
+async function saveProfileFlow() {
+  const user = state.account.user;
+  if (!user) return;
+  const displayName = cleanName($('profile-name-input').value);
+  setFormMessage('profile-error', '');
+  setFormMessage('profile-success', '');
+  $('profile-save').disabled = true;
+  try {
+    const response = await api.updateProfile({ displayName, avatar: profileAvatar });
+    state.account.user = response.user;
+    renderAccountUI();
+    $('profile-name-input').value = response.user.displayName;
+    setFormMessage('profile-success', t('profileSaved'), 'success');
+    toast(t('profileSaved'), 'success', 2000);
+  } catch (error) {
+    setFormMessage('profile-error', apiErrorMessage(error), 'error');
+  } finally {
+    $('profile-save').disabled = false;
+  }
+}
+
+async function changePasswordFlow(event) {
+  event.preventDefault();
+  setFormMessage('password-error', '');
+  setFormMessage('password-success', '');
+  const currentPassword = $('current-password').value;
+  const newPassword = $('new-password').value;
+  $('password-submit').disabled = true;
+  try {
+    await api.changePassword({ currentPassword, newPassword });
+    $('current-password').value = '';
+    $('new-password').value = '';
+    setFormMessage('password-success', t('passwordChanged'), 'success');
+    toast(t('passwordChanged'), 'success', 2600);
+  } catch (error) {
+    setFormMessage('password-error', apiErrorMessage(error), 'error');
+  } finally {
+    $('password-submit').disabled = false;
+  }
+}
+
+async function deleteAccountFlow() {
+  const user = state.account.user;
+  if (!user) return;
+  if (!window.confirm(t('deleteAccountConfirm'))) return;
+  setFormMessage('delete-error', '');
+  $('delete-account').disabled = true;
+  try {
+    await api.deleteAccount({ password: $('delete-password').value });
+    state.account.user = null;
+    state.stats = null;
+    state.history = { items: [], page: 0, hasMore: false, loading: false, size: '', result: '' };
+    renderAccountUI();
+    goHome();
+    toast(t('accountDeleted'), 'success', 2600);
+  } catch (error) {
+    setFormMessage('delete-error', apiErrorMessage(error), 'error');
+  } finally {
+    $('delete-account').disabled = false;
+  }
+}
+
+function togglePasswordVisibility(button) {
+  const input = $(button.dataset.togglePassword);
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(show));
+  button.setAttribute('aria-label', t('showPassword'));
+}
+
+// ---------------------------------------------------------------------------
+// Xem lai van (replay)
+// ---------------------------------------------------------------------------
+function stopReplayPlayback() {
+  if (state.replay.timer !== null) {
+    window.clearTimeout(state.replay.timer);
+    state.replay.timer = null;
+  }
+  state.replay.playing = false;
+  const button = $('replay-play');
+  if (button) button.textContent = '▶';
+}
+
+function replayExpressions(match) {
+  return (symbol) => {
+    if (match.result === 'draw') return match.result ? 'sleep' : 'normal';
+    if (!match.result) return 'normal';
+    return symbol === match.result ? 'win' : 'lose';
+  };
+}
+
+function enterReplay(match, returnTo = 'history') {
+  stopReplayPlayback();
+  state.replay = {
+    match,
+    index: 0,
+    timer: null,
+    speed: Number($('replay-speed').value) || 1,
+    playing: false,
+    returnTo,
+  };
+  enterGameScreen('replay', match.size);
+  $('replay-bar').hidden = false;
+  $('game-record').hidden = true;
+  $('result-card').hidden = true;
+  $('emote-bar').hidden = true;
+  $('replay-range').max = String(match.moves.length);
+  $('replay-speed').value = String(state.replay.speed);
+  const sizeText = sizeLabel(match.size);
+  $('game-rule').textContent = t('replayRule', { size: sizeText });
+  renderReplayFrame();
+}
+
+function renderReplayFrame() {
+  const replay = state.replay;
+  const match = replay.match;
+  if (!match) return;
+  const total = match.moves.length;
+  const index = Math.max(0, Math.min(total, replay.index));
+  replay.index = index;
+  const atEnd = index >= total;
+  const prefix = match.moves.slice(0, index);
+  const last = prefix.length ? prefix[prefix.length - 1] : null;
+  const expressionFor = replayExpressions(match);
+
+  if (match.size === INFINITE_SIZE) {
+    const built = infiniteStateFromMoves(prefix);
+    renderInfinite({
+      cells: built.cells,
+      moves: built.moves,
+      region: built.region,
+      lastMove: last ? { x: last.x, y: last.y } : null,
+      winLine: atEnd ? match.winLine : null,
+      locked: true,
+      preview: null,
+      maxMoves: INFINITE.maxMoves,
+      drawLimit: false,
+      expressionFor,
+    });
+    refreshInfiniteText();
+  } else {
+    const size = Number(match.size);
+    const board = createBoard(size);
+    for (const move of prefix) {
+      const cellIndex = Number(move.i);
+      if (Number.isInteger(cellIndex) && cellIndex >= 0 && cellIndex < board.length) {
+        board[cellIndex] = move.s === 'B' ? 'B' : 'A';
+      }
+    }
+    renderBoard(board, {
+      locked: true,
+      preview: null,
+      expressionFor,
+      lastMove: last ? Number(last.i) : null,
+    });
+    setBoardLabel(t('boardLabel', { size }));
+    if (atEnd && match.winLine) showWinLine(match.winLine);
+    else clearWinLine();
+  }
+
+  const finished = atEnd;
+  const draw = match.result === 'draw';
+  const winner = match.result;
+  const cardFor = (symbol) => {
+    const player = match.players?.[symbol] || {};
+    return {
+      name: player.deleted ? t('deletedPlayer') : player.name || t('orangeCat'),
+      avatar: player.avatar || (symbol === 'A' ? 'orange' : 'gray'),
+      tag: `${symbol === match.mySymbol ? t('youBadge') : t('opponentBadge')} · ${
+        symbol === 'A' ? t('orangeCat') : t('grayCat')
+      }`,
+      score: null,
+      online: false,
+      active: false,
+      winner: finished && !draw && winner === symbol,
+      loser: finished && !draw && winner !== symbol,
+    };
+  };
+  setPlayerCard('left', cardFor('A'));
+  setPlayerCard('right', cardFor('B'));
+
+  $('replay-range').value = String(index);
+  $('replay-counter').textContent = `${index}/${total}`;
+  if (finished) {
+    const key = match.outcome === 'win' ? 'replayWin' : match.outcome === 'loss' ? 'replayLoss' : 'replayDraw';
+    setStatus(t(key), match.outcome === 'win' ? 'win' : '');
+  } else {
+    setStatus(t('replayProgress', { n: index, total }), '');
+  }
+  updateModeLabel();
+}
+
+function setReplayIndex(next) {
+  stopReplayPlayback();
+  state.replay.index = next;
+  renderReplayFrame();
+}
+
+function scheduleReplayStep() {
+  stopReplayPlayback();
+  const total = state.replay.match?.moves.length || 0;
+  if (!total) return;
+  if (state.replay.index >= total) state.replay.index = 0;
+  state.replay.playing = true;
+  $('replay-play').textContent = '❚❚';
+  const delay = Math.max(120, Math.round(850 / (state.replay.speed || 1)));
+  const step = () => {
+    if (!state.replay.playing || !state.replay.match) return;
+    const max = state.replay.match.moves.length;
+    if (state.replay.index >= max) {
+      stopReplayPlayback();
+      return;
+    }
+    state.replay.index += 1;
+    renderReplayFrame();
+    if (state.replay.index >= max) {
+      stopReplayPlayback();
+      return;
+    }
+    state.replay.timer = window.setTimeout(step, delay);
+  };
+  if (state.replay.index >= total) renderReplayFrame();
+  state.replay.timer = window.setTimeout(step, delay);
+}
+
+function toggleReplayPlayback() {
+  if (state.replay.playing) stopReplayPlayback();
+  else scheduleReplayStep();
+}
+
+function exitReplay() {
+  stopReplayPlayback();
+  const returnTo = state.replay.returnTo;
+  state.replay.match = null;
+  exitLocalGame();
+  $('replay-bar').hidden = true;
+  hideResult();
+  clearWinLine();
+  setStatus('', '');
+  if (returnTo === 'history' && state.account.user) openHistory();
+  else goHome();
+}
+
+async function openReplay(matchId) {
+  setLoading(true, t('loading'));
+  try {
+    const response = await api.match(matchId);
+    setLoading(false);
+    if (!response?.match) {
+      toast(t('matchNotFound'), 'error', 2800);
+      return;
+    }
+    enterReplay(response.match, 'history');
+  } catch (error) {
+    setLoading(false);
+    toast(apiErrorMessage(error), 'error', 3000);
+    if (error.code === 'AUTH_REQUIRED') {
+      state.account.user = null;
+      renderAccountUI();
+      openAuth('login');
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +1299,11 @@ function goHome({ focus = true } = {}) {
     leaveOnlineRoom();
     return;
   }
+  if (state.replay.match) {
+    stopReplayPlayback();
+    state.replay.match = null;
+    $('replay-bar').hidden = true;
+  }
   exitLocalGame();
   setMode('');
   setBanner('');
@@ -392,6 +1367,9 @@ function updateModeLabel() {
   else if (state.mode === 'online') {
     label = t('modeOnline');
     if (state.online.roomId) label += ` · ${state.online.roomId}`;
+  } else if (state.mode === 'replay') {
+    label = t('modeReplay');
+    if (state.replay.match?.size) label += ` · ${sizeLabel(state.replay.match.size)}`;
   }
   $('game-mode-label').textContent = label;
 }
@@ -428,14 +1406,16 @@ function injectVisuals() {
 function renderAvatarChoices() {
   const list = $('home-avatar-list');
   if (!list) return;
+  const selected = currentProfile().avatar;
   list.innerHTML = '';
   avatarButtons = AVATAR_KEYS.map((key, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'avatar-btn';
     button.dataset.avatar = key;
-    button.setAttribute('aria-pressed', String(state.profile.avatar === key));
+    button.setAttribute('aria-pressed', String(selected === key));
     button.setAttribute('aria-label', t('avatarAria', { n: index + 1 }));
+    button.disabled = Boolean(state.account.user);
     button.innerHTML = catAvatar(key);
     button.addEventListener('click', () => selectAvatar(key));
     list.appendChild(button);
@@ -444,7 +1424,7 @@ function renderAvatarChoices() {
 }
 
 function selectAvatar(key) {
-  if (!AVATAR_KEYS.includes(key)) return;
+  if (!AVATAR_KEYS.includes(key) || state.account.user) return;
   state.profile.avatar = key;
   saveProfile(currentProfile());
   avatarButtons.forEach((button) => {
@@ -463,6 +1443,11 @@ function renderLobbyProfile() {
 function syncNameInput() {
   const input = $('name-input');
   if (!input) return;
+  const user = state.account.user;
+  if (user) {
+    input.value = cleanName(user.displayName) || user.username;
+    return;
+  }
   const name = cleanName(state.profile.name) || t('defaultName');
   state.profile.name = name;
   input.value = name;
@@ -519,7 +1504,7 @@ function setCardsForLocal() {
 
   setPlayerCard('left', {
     name: displayName('A'),
-    avatar: state.profile.avatar,
+    avatar: currentProfile().avatar,
     tag: `${t('youBadge')} · ${t('orangeCat')}`,
     score: state.mode === 'local' ? local.A : null,
     active: !finished && game.turn === 'A',
@@ -1906,8 +2891,7 @@ function updateOnlineTimer(next) {
   } else {
     stopOnlineTimer();
     $('turn-timer').hidden = true;
-    const fallback =
-      next.size >= 5 || isInfiniteSize(next.size) ? 45000 : 30000;
+    const fallback = isInfiniteSize(next.size) ? 45000 : 30000;
     updateTimer(0, next.turnMs || fallback);
   }
 }
@@ -1997,13 +2981,31 @@ function applyLanguage(lang) {
   renderScores();
   refreshInfiniteText();
   updateSoundButton();
+  renderAuthAvatars();
+  updatePasswordStrength();
+  refreshAuthInviteNote();
+  if (state.account.user) renderAccountUI();
+  else syncNameInput();
 
   if (state.screen === 'lobby') clearLobbyStatus();
   if (state.screen === 'room') updateRoomInfo();
+  if (state.screen === 'history') {
+    renderHistoryFilters();
+    renderHistory();
+  }
+  if (state.screen === 'stats') renderStats();
+  if (state.screen === 'profile' && state.account.user) {
+    renderProfileAvatars(profileAvatar);
+    $('profile-name-input').value = state.account.user.displayName;
+  }
+  if (state.pendingInvite && $('dialog-invite').open) {
+    showInviteDialog(state.pendingInvite);
+  }
 
   if (state.screen === 'game') {
     updateModeLabel();
     if (state.mode === 'online' && state.online.roomState) syncOnlineView();
+    else if (state.mode === 'replay' && state.replay.match) renderReplayFrame();
     else if (state.game) renderLocalGame();
   }
 }
@@ -2202,6 +3204,88 @@ function handleCell(index, y) {
 // ---------------------------------------------------------------------------
 // Gan su kien
 // ---------------------------------------------------------------------------
+function setupAccountEvents() {
+  $('btn-login-home').addEventListener('click', () => openAuth('login'));
+  $('btn-register-home').addEventListener('click', () => openAuth('register'));
+  $('btn-logout').addEventListener('click', logoutAccount);
+  document.querySelectorAll('[data-account]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const which = button.dataset.account;
+      if (which === 'profile') openProfile();
+      else if (which === 'history') openHistory();
+      else if (which === 'stats') openStats();
+    });
+  });
+
+  $('auth-back').addEventListener('click', () => {
+    state.pendingRoom = null;
+    stripRoomParam();
+    goHome();
+  });
+  $('auth-tab-login').addEventListener('click', () => switchAuthTab('login'));
+  $('auth-tab-register').addEventListener('click', () => switchAuthTab('register'));
+  document.querySelectorAll('[data-toggle-password]').forEach((button) => {
+    button.addEventListener('click', () => togglePasswordVisibility(button));
+  });
+  $('register-password').addEventListener('input', updatePasswordStrength);
+  $('login-form').addEventListener('submit', loginFlow);
+  $('register-form').addEventListener('submit', registerFlow);
+  $('btn-auth-guest').addEventListener('click', guestFlow);
+
+  $('profile-back').addEventListener('click', () => goHome());
+  $('profile-save').addEventListener('click', saveProfileFlow);
+  $('password-form').addEventListener('submit', changePasswordFlow);
+  $('delete-account').addEventListener('click', deleteAccountFlow);
+
+  $('history-back').addEventListener('click', () => goHome());
+  $('history-size').addEventListener('change', (event) => {
+    state.history.size = event.target.value;
+    loadHistory(true);
+  });
+  $('history-result').addEventListener('change', (event) => {
+    state.history.result = event.target.value;
+    loadHistory(true);
+  });
+  $('history-more').addEventListener('click', () => loadHistory(false));
+
+  $('stats-back').addEventListener('click', () => goHome());
+
+  $('invite-join').addEventListener('click', joinInviteRoom);
+  $('invite-home').addEventListener('click', leaveInvite);
+  $('dialog-invite').addEventListener('close', () => {
+    if (state.pendingInvite) {
+      state.pendingInvite = null;
+      stripRoomParam();
+      if (state.screen === 'lobby') goHome();
+    }
+  });
+}
+
+function setupReplayEvents() {
+  $('replay-first').addEventListener('click', () => setReplayIndex(0));
+  $('replay-prev').addEventListener('click', () =>
+    setReplayIndex(Math.max(0, state.replay.index - 1))
+  );
+  $('replay-next').addEventListener('click', () => {
+    const total = state.replay.match?.moves.length || 0;
+    setReplayIndex(Math.min(total, state.replay.index + 1));
+  });
+  $('replay-last').addEventListener('click', () =>
+    setReplayIndex(state.replay.match?.moves.length || 0)
+  );
+  $('replay-play').addEventListener('click', toggleReplayPlayback);
+  $('replay-range').addEventListener('input', (event) => {
+    stopReplayPlayback();
+    state.replay.index = Number(event.target.value) || 0;
+    renderReplayFrame();
+  });
+  $('replay-speed').addEventListener('change', (event) => {
+    state.replay.speed = Number(event.target.value) || 1;
+    if (state.replay.playing) scheduleReplayStep();
+  });
+  $('replay-exit').addEventListener('click', exitReplay);
+}
+
 function setupHomeEvents() {
   $('btn-ai').addEventListener('click', openAISetup);
   $('btn-local').addEventListener('click', openLocalSetup);
@@ -2408,12 +3492,19 @@ async function routeInitial() {
   const params = new URLSearchParams(window.location.search);
   const rawRoom = params.get('room');
   if (rawRoom !== null && rawRoom.trim() !== '') {
-    showScreen('lobby');
-    renderLobbyProfile();
     const code = normalizeRoomCode(rawRoom);
-    $('room-input').value = code;
-    primeOnline();
-    focusElement(code.length === 5 ? $('btn-join-room') : $('room-input'));
+    if (code.length !== 5) {
+      stripRoomParam();
+      goHome({ focus: false });
+      toast(t('invalidCode'), 'error', 3000);
+      return;
+    }
+    if (!state.account.user) {
+      state.pendingRoom = code;
+      openAuth('login');
+      return;
+    }
+    await openInviteRoom(code);
     return;
   }
 
@@ -2438,6 +3529,7 @@ function init() {
 
   injectVisuals();
   renderAvatarChoices();
+  renderAuthAvatars();
   syncNameInput();
   renderLobbyProfile();
   populateSettings();
@@ -2446,6 +3538,7 @@ function init() {
   renderScores();
   updateSetupSelection();
   updateSoundButton();
+  renderAccountUI();
 
   initBoard({
     size: state.settings.boardSize,
@@ -2474,17 +3567,19 @@ function init() {
   });
 
   setupHomeEvents();
+  setupAccountEvents();
   setupSetupEvents();
   setupLocalSetupEvents();
   setupLobbyEvents();
   setupRoomEvents();
   setupGameEvents();
+  setupReplayEvents();
   setupDialogs();
   setupAudioUnlock();
   setupNetworkWatchers();
   registerServiceWorker();
 
-  routeInitial();
+  refreshAccount().finally(routeInitial);
 }
 
 init();

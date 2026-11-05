@@ -1,10 +1,12 @@
 # Meo Meo Caro
 
-Game cờ ca-rô (Tic Tac Toe) chủ đề mèo với bàn **3×3 đến 8×8** và **bàn ∞ vô cực tự mở rộng**, chơi được theo ba cách:
+Game cờ ca-rô (Tic Tac Toe) chủ đề mèo với bàn **3×3** và **bàn ∞ vô cực tự mở rộng**, chơi được theo ba cách:
 
 - **Đấu với máy** — 3 độ khó, chọn cỡ bàn, chơi hoàn toàn offline sau lần tải đầu.
 - **2 người cùng máy** — chung một thiết bị, chọn cỡ bàn rồi luân phiên đánh.
-- **Online** — tạo phòng bằng mã 5 ký tự, người tạo chọn cỡ bàn, chia sẻ link `?room=CODE`, máy chủ xác thực toàn bộ nước đi.
+- **Online** — tạo phòng bằng mã 5 ký tự, chia sẻ link `?room=CODE`, máy chủ xác thực toàn bộ nước đi.
+
+Có **tài khoản tùy chọn** (đăng ký / đăng nhập / hồ sơ) để lưu **lịch sử đấu online**, **thống kê theo cỡ bàn** và **xem lại ván** bằng chuỗi nước đi đã lưu. Khách vẫn chơi được mọi chế độ nhưng không có lịch sử. Cơ sở dữ liệu dùng **PostgreSQL** khi có `DATABASE_URL`, hoặc **SQLite** trong `data/meo.db` khi chạy local.
 
 Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ tay bằng code**, không dùng hình ảnh ngoài và không dùng nhân vật có bản quyền. Âm thanh được tổng hợp bằng Web Audio (không có file mp3).
 
@@ -15,24 +17,30 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Nhóm | Chi tiết |
 | --- | --- |
 | Chế độ chơi | AI (Mèo con / Mèo trưởng thành / Mèo thông thái), 2 người cùng máy, online theo phòng |
-| Cỡ bàn | 3×3, 4×4, 5×5, 6×6, 7×7, 8×8 và **∞ vô cực**. Luật thắng: 3 quân (3×3), 4 quân (4×4), 5 quân (5×5 trở lên và ∞); chuỗi dài hơn vẫn thắng. Bàn ∞ dùng toạ độ nguyên (có số âm), vùng chơi ban đầu 9×9 quanh (0,0), tự mở rộng 2 ô quanh quân xa nhất và không bao giờ co lại; hòa khi chạm giới hạn kỹ thuật 2000 nước |
+| Cỡ bàn | 3×3 và **∞ vô cực**. Luật thắng: 3 quân (3×3), 5 quân (∞); chuỗi dài hơn vẫn thắng. Bàn ∞ dùng toạ độ nguyên (có số âm), vùng chơi ban đầu 9×9 quanh (0,0), tự mở rộng 2 ô quanh quân xa nhất và không bao giờ co lại; hòa khi chạm giới hạn kỹ thuật 2000 nước |
 | AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → chấm điểm chuỗi + ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax + alpha-beta có giới hạn thời gian, chỉ bàn 3×3 là hoàn hảo. Bàn ∞ dùng danh sách ô gần quân, iterative deepening sâu 3–4 trong Web Worker (~800ms), trả nước hợp lệ kể cả khi hết thời gian |
 | Bàn cờ | Lưới N×N dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo. Bàn ∞ vẽ bằng Canvas có ảo hoá ô, kéo để di chuyển, cuộn/chụm để thu phóng, nút ± / về giữa / tới nước vừa đánh, mũi tên chỉ nước ngoài màn hình và hoạt ảnh mở rộng vùng |
 | Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang kể cả 8×8 trên màn 320px; bàn ∞ dùng `touch-action: none` để chạm/kéo/chụm không cuộn trang, có nhãn toạ độ, tổng số nước và thông báo cho trình đọc màn hình |
+| Tài khoản | Đăng ký / đăng nhập / đăng xuất, ghi nhớ phiên, hồ sơ (tên hiển thị + avatar), đổi mật khẩu (thu hồi các phiên khác), xoá tài khoản mềm. Tên đăng nhập 3–20 ký tự `[a-zA-Z0-9_]`, không phân biệt hoa thường; mật khẩu 8–72 ký tự, chặn mật khẩu phổ biến và trùng tên đăng nhập; thanh độ mạnh mật khẩu; lỗi hiển thị theo mã đã dịch. Khách vẫn chơi AI / 2 người / online nhưng không lưu lịch sử |
+| Lịch sử & thống kê | Chỉ lưu ván online có ít nhất một tài khoản; mỗi ván lưu một lần (thắng, hoà, chạm giới hạn nước, mất kết nối, rời phòng), đấu lại tạo bản ghi mới. Danh sách có phân trang (≤50), lọc theo cỡ bàn và kết quả; chi tiết chỉ người trong ván xem được (người ngoài nhận 404). Thống kê thắng/hoà/thua và tỷ lệ thắng theo từng cỡ bàn. Đối thủ đã xoá tài khoản hiển thị là "Người chơi đã xóa" |
+| Xem lại ván | Trình phát lại chỉ đọc dùng lại bàn N×N hoặc Canvas ∞: nút đầu / trước / phát–tạm dừng / sau / cuối, thanh tua, tốc độ 0.5×–4×, bộ đếm nước, đánh dấu nước hiện tại và vẽ đường thắng ở nước cuối |
+| Lời mời | Link `location.origin/?room=CODE`, sao chép và chia sẻ. Khách mở link được đưa tới đăng nhập/đăng ký hoặc "Chơi với tư cách khách" rồi tự vào phòng, giữ nguyên mã phòng. Tài khoản đã đăng nhập thấy hộp xác nhận cỡ bàn / luật / chủ phòng trước khi vào. Mã sai, phòng đầy hoặc đã đóng báo rõ và tự bỏ `?room` khỏi URL. Chờ server thức dậy 30–90 giây với thông báo trạng thái |
 | Cài đặt | Bật/tắt âm thanh, nhạc nền, giảm chuyển động; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
-| Lưu trữ | localStorage: hồ sơ, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3 |
-| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (gồm ∞), đồng hồ 30 giây/lượt (5×5 trở lên và ∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước |
-| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker và module bàn ∞, cache v4), cài lên màn hình chính, chơi AI khi mất mạng |
-| Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ |
+| Lưu trữ | localStorage: hồ sơ khách, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3. Tài khoản và lịch sử nằm ở database phía server |
+| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (gồm ∞), đồng hồ 30 giây/lượt (5×5 trở lên và ∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi |
+| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞ và `api.js`, cache v5), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
+| Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập; Helmet + CSP; SQL tham số hoá; không trả `password_hash`, `token_hash` hay `user_id` của người khác |
 
 ---
 
 ## Công nghệ
 
 - HTML5, CSS3, JavaScript ES Modules thuần (không framework, không bước build).
-- Node.js ≥ 18, Express 4, Socket.IO 4, helmet, compression.
-- Web Audio API tổng hợp âm thanh; Canvas cho confetti.
-- `socket.io-client` chỉ dùng cho test tích hợp.
+- Node.js ≥ 22.13, Express 4, Socket.IO 4, helmet, compression, express-rate-limit.
+- PostgreSQL qua `pg` (khi có `DATABASE_URL`) hoặc SQLite tích hợp `node:sqlite` (file `data/meo.db`).
+- `crypto.scrypt` cho mật khẩu, SHA-256 cho token phiên; migration có phiên bản chạy tự động khi khởi động.
+- Web Audio API tổng hợp âm thanh; Canvas cho confetti và bàn ∞.
+- `socket.io-client` chỉ dùng cho test tích hợp; Playwright chỉ dùng trong QA thủ công, không phải dependency.
 
 ---
 
@@ -43,13 +51,20 @@ meo-meo-caro/
 ├── package.json
 ├── package-lock.json
 ├── server.js                 # Express + Socket.IO, nguồn sự thật của chế độ online
+├── db.js                     # adapter PostgreSQL/SQLite, migration, query, transaction
+├── auth.js                   # scrypt, phiên đăng nhập, API tài khoản, CSRF, rate limit
+├── history.js                # lưu ván một lần, API lịch sử / chi tiết / thống kê
+├── render.yaml               # blueprint Render: web service + PostgreSQL
+├── .env.example              # mẫu biến môi trường (không chứa bí mật)
+├── scripts/
+│   └── migrate.js            # `npm run migrate`
 ├── README.md
 ├── public/
-│   ├── index.html            # 6 màn hình (có bước chọn cỡ bàn), 3 dialog, toast, banner
+│   ├── index.html            # các màn hình game, tài khoản, hồ sơ, lịch sử, thống kê, dialog
 │   ├── manifest.json         # PWA manifest
-│   ├── sw.js                 # service worker: app shell + offline AI (cache v4)
+│   ├── sw.js                 # service worker: app shell + offline AI (cache v5)
 │   ├── css/
-│   │   └── style.css         # giao diện động N×N, responsive, reduced-motion
+│   │   └── style.css         # giao diện động N×N, tài khoản/lịch sử/replay, responsive
 │   ├── assets/
 │   │   └── cats.js           # SVG gốc: 6 mèo, mascot, dấu chân, cá, len, chuông
 │   ├── icons/
@@ -57,32 +72,38 @@ meo-meo-caro/
 │   │   ├── icon-192.png
 │   │   └── icon-512.png
 │   └── js/
-│       ├── main.js           # bộ điều khiển trung tâm (điều hướng, ván chơi, online)
-│       ├── game-core.js      # cấu hình cỡ bàn, bàn cờ, luật thắng/thua/hòa, bàn ∞ (Map thưa, vùng mở rộng)
-│       ├── ai.js             # AI 3 độ khó cho 3×3–8×8 và bàn ∞ (minimax + alpha-beta)
-│       ├── ai-worker.js      # Web Worker chạy AI bàn lớn và bàn ∞, tránh đơ giao diện
+│       ├── main.js           # bộ điều khiển trung tâm (điều hướng, ván chơi, online,
+│       │                     # tài khoản, lịch sử, replay, lời mời)
+│       ├── api.js            # gọi REST /api, lỗi mã hoá, timeout
+│       ├── game-core.js      # cấu hình cỡ bàn, bàn cờ, luật thắng/thua/hòa, bàn ∞
+│       ├── ai.js             # AI 3 độ khó cho 3×3 và bàn ∞
+│       ├── ai-worker.js      # Web Worker chạy AI bàn vô cực
 │       ├── ai-client.js      # gọi worker, timeout/hủy, fallback main thread
-│       ├── infinite-board.js # Canvas ảo hoá cho bàn ∞: kéo/chụm/thu phóng, vùng, thắng, accessibility
+│       ├── infinite-board.js # Canvas ảo hoá cho bàn ∞
 │       ├── online.js         # bọc Socket.IO phía client
 │       ├── ui.js             # render bàn N×N, hiệu ứng, toast, timer, confetti
 │       ├── audio.js          # âm thanh tổng hợp Web Audio
 │       ├── storage.js        # localStorage an toàn + fallback bộ nhớ
 │       └── i18n.js           # chuỗi tiếng Việt / tiếng Anh
 └── test/
-    ├── ai.test.mjs           # test luật chơi 3×3–8×8 và ∞, AI các cỡ bàn, duyệt cạn AI Khó 3×3
-    └── server.test.mjs       # test tích hợp Socket.IO với server thật (4×4, 8×8, ∞)
+    ├── ai.test.mjs           # luật chơi 3×3 và ∞, AI các độ khó, duyệt cạn AI Khó
+    ├── server.test.mjs       # Socket.IO thật: phòng, cỡ bàn 3×3 và ∞, tài khoản, rejoin
+    ├── auth.test.mjs         # đăng ký/đăng nhập/phiên/CSRF/rate limit/xoá tài khoản/migration
+    └── history.test.mjs      # lưu ván, lịch sử, replay, thống kê, quyền truy cập
 ```
 
 ---
 
 ## Chạy dự án
 
+Yêu cầu **Node.js ≥ 22.13** (dùng `node:sqlite` tích hợp). Nếu chỉ dùng PostgreSQL, Node ≥ 20 vẫn chạy được nhưng khuyến nghị giữ ≥ 22.13.
+
 ```bash
 npm install
 npm start
 ```
 
-Mở `http://localhost:3000`.
+Mở `http://localhost:3000`. Lần chạy đầu tự tạo `data/meo.db` (SQLite) và chạy migration; không cần cấu hình gì thêm.
 
 Chế độ phát triển (tự khởi động lại khi sửa server):
 
@@ -90,32 +111,90 @@ Chế độ phát triển (tự khởi động lại khi sửa server):
 npm run dev
 ```
 
+Chạy migration thủ công (idempotent, đã tự chạy khi `npm start`):
+
+```bash
+npm run migrate
+```
+
+Chạy test:
+
+```bash
+npm test            # ai + server + auth + history
+```
+
 > Các module ES yêu cầu chạy qua HTTP, không mở trực tiếp `public/index.html` bằng `file://`.
 
 ### Biến môi trường
 
+Sao chép `.env.example` thành `.env` nếu muốn cấu hình. **Không commit `.env`.**
+
 | Biến | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `PORT` | `3000` | Cổng server |
+| `DATABASE_URL` | (trống) | Chuỗi kết nối PostgreSQL, ví dụ `postgresql://user:pass@host/db?sslmode=require`. Khi có biến này, SQLite không được dùng |
+| `DATABASE_FILE` | `data/meo.db` | Đường dẫn SQLite khi không có `DATABASE_URL`; test dùng file tạm riêng |
+| `PGSSL` | (trống) | Đặt `true` để buộc SSL khi nhà cung cấp PostgreSQL yêu cầu (Neon/Supabase thường đã có `sslmode=require` trong URL) |
+| `SESSION_SECRET` | (trống) | **Bắt buộc khi `NODE_ENV=production`**, chuỗi ngẫu nhiên ≥ 32 ký tự. Không dùng giá trị mẫu |
+| `SESSION_DAYS` | `30` | Số ngày của phiên "ghi nhớ"; phiên không ghi nhớ luôn 7 ngày |
+| `NODE_ENV` | (trống) | Đặt `production` để bật cookie `Secure`, kiểm tra `SESSION_SECRET` |
+| `TRUST_PROXY` | (trống) | Số hop proxy tin cậy (Render đặt `1`) để `req.ip` và rate limit đúng sau proxy |
 | `CORS_ORIGIN` | (trống) | Danh sách origin được phép, phân cách bằng dấu phẩy. Chỉ cần đặt khi client và server khác origin |
 | `ROOM_TTL_MS` | `900000` | Thời gian phòng không hoạt động trước khi bị dọn (15 phút) |
 | `RECONNECT_GRACE_MS` | `60000` | Thời gian giữ chỗ khi người chơi mất kết nối |
 | `TURN_MS` | (trống) | Ghi đè thời gian mỗi lượt cho test. Khi để trống: 30 giây cho 3×3–4×4, 45 giây cho 5×5–8×8 và ∞ |
 | `INFINITE_MAX_MOVES` | `2000` | Giới hạn kỹ thuật số nước của bàn ∞ trước khi hòa; chủ yếu dùng cho test |
+| `DISABLE_RATE_LIMIT` | (trống) | Chỉ dùng trong test (`1` để tắt rate limit) |
 
-`ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS` và `INFINITE_MAX_MOVES` chủ yếu dùng cho test; khi chạy thật không cần đặt.
+`ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS`, `INFINITE_MAX_MOVES` và `DISABLE_RATE_LIMIT` chủ yếu dùng cho test; khi chạy thật không cần đặt.
+
+> **Không bao giờ ghi mật khẩu, token hay chuỗi kết nối database vào log, repo hoặc response.** Server chỉ log mã lỗi và mã phòng; API không trả `password_hash`, `token_hash` hay cookie của người khác.
+
+---
+
+## Tài khoản, lịch sử & xem lại
+
+### Tài khoản
+
+- Đăng ký bằng tên đăng nhập (3–20 ký tự `[a-zA-Z0-9_]`, lưu dạng chữ thường và không phân biệt hoa thường), tên hiển thị ≤ 12 ký tự, mật khẩu 8–72 ký tự và avatar mèo.
+- Đăng nhập có lựa chọn **Ghi nhớ đăng nhập**: có ghi nhớ dùng `SESSION_DAYS` (mặc định 30 ngày), không ghi nhớ dùng phiên 7 ngày. Cookie `mmc_sid` là httpOnly, SameSite=Lax, Secure khi production.
+- Hồ sơ cho phép đổi tên hiển thị/avatar và đổi mật khẩu. Đổi mật khẩu **giữ phiên hiện tại** nhưng thu hồi mọi phiên khác.
+- Xoá tài khoản là xoá mềm: username/display_name được ẩn danh, mọi phiên bị xoá, nhưng lịch sử ván vẫn còn và hiển thị đối thủ là "Người chơi đã xóa". Không thể khôi phục sau khi xoá.
+- Khách không cần tài khoản: vẫn chơi AI, 2 người cùng máy và online. Khách **không** có lịch sử/thống kê. Khi một ván có một tài khoản và một khách, ván được lưu cho tài khoản kèm ảnh chụp tên/avatar của khách.
+- Mỗi tài khoản chỉ được giữ **một ghế** trong một phòng. Mở tab thứ hai cùng tài khoản sẽ thay thế socket cũ (rejoin) chứ không tạo người chơi thứ ba.
+
+### Lịch sử & thống kê
+
+- Ván online kết thúc do thắng, hoà, chạm giới hạn nước, mất kết nối quá hạn hoặc rời phòng đều được lưu **đúng một lần**. Lỗi database chỉ ghi log, không làm sập server hay treo phòng.
+- Danh sách lịch sử có phân trang (`page`, `limit` ≤ 50), lọc theo cỡ bàn (3×3–8×8, ∞) và kết quả thắng/thua/hoà; bấm **Xem lại** để mở ván.
+- Chi tiết ván chỉ trả cho người trong ván. Người khác nhận `404 MATCH_NOT_FOUND` (không tiết lộ ván có tồn tại); chưa đăng nhập nhận `401 AUTH_REQUIRED`.
+- Trang thống kê tổng hợp số ván, thắng/hoà/thua, tỷ lệ thắng và bảng theo từng cỡ bàn.
+
+### Xem lại ván
+
+Trình phát lại chỉ đọc dựng lại bàn từ danh sách nước đi đã lưu (chỉ số ô với bàn hữu hạn, toạ độ `{x,y}` với bàn ∞). Có nút **đầu / trước / phát–tạm dừng / sau / cuối**, thanh tua, tốc độ 0.5×/1×/2×/4×, bộ đếm `n/tổng`, đánh dấu nước hiện tại và vẽ đường thắng khi tới nước cuối. Bàn ∞ dùng lại Canvas kéo/chụm; bàn hữu hạn dùng lại lưới N×N.
 
 ---
 
 ## Chơi online
 
-1. Mở `http://localhost:3000`, nhập tên, chọn avatar.
+1. Mở `http://localhost:3000`. Có thể đăng nhập/đăng ký hoặc bấm **Chơi với tư cách khách**. Tài khoản dùng tên hiển thị/avatar trong hồ sơ; khách nhập tên riêng (≤ 12 ký tự).
 2. Chọn **Chơi online** → chọn cỡ bàn (kể cả **∞**) → **Tạo phòng**. Nhận mã 5 ký tự; cỡ bàn và luật thắng hiển thị ở phòng chờ.
 3. Gửi mã hoặc bấm **Sao chép link** / **Chia sẻ** cho người thứ hai.
 4. Người thứ hai mở link (hoặc nhập mã ở mục **Vào phòng**). Họ thấy đúng cỡ bàn của phòng; ai đi trước được chọn ngẫu nhiên.
 5. Mỗi lượt có 30 giây (5×5 trở lên và ∞: 45 giây); hết giờ máy chủ tự đánh một ô trống ngẫu nhiên, không xử thua, và phát sự kiện `game:timeout`.
 6. Kết thúc ván, cả hai có thể bấm **Đấu lại**; chỉ khi cả hai đồng ý ván mới bắt đầu, giữ nguyên cỡ bàn và đổi người đi trước.
 7. Với bàn ∞, mỗi nước gửi `game:move` dạng `{roomId, x, y}` (toạ độ nguyên, có thể âm). Máy chủ từ chối toạ độ không nguyên, ngoài vùng hiện tại, ô đã có quân, sai lượt hoặc ván đã kết thúc. F5 khôi phục toàn bộ danh sách nước đi và vùng chơi.
+
+### Link mời
+
+- Link có dạng `location.origin/?room=CODE` (ví dụ `https://ten-app.onrender.com/?room=ABC23`). Nút **Sao chép link** và **Chia sẻ** dùng chung một URL.
+- **Khách chưa đăng nhập** mở link: app mở màn hình đăng nhập/đăng ký, ghi rõ đang được mời vào phòng. Sau khi đăng nhập/đăng ký hoặc bấm **Chơi với tư cách khách**, app tự mở hộp xác nhận phòng và vào đúng mã — không mất mã phòng.
+- **Tài khoản đã đăng nhập** mở link: thấy hộp xác nhận gồm avatar/tên chủ phòng, cỡ bàn và luật thắng trước khi bấm **Vào ván**.
+- Mã sai định dạng, phòng không tồn tại, phòng đầy hoặc đã đóng đều báo rõ; app tự xoá `?room` khỏi URL bằng `history.replaceState` và đưa về trang chủ để tránh mở lại lỗi.
+- Host là `localhost`/IP nội bộ: hộp mời hiển thị lưu ý rằng người ở máy khác cần dùng URL công khai (tunnel/LAN) chứ không dùng `localhost`.
+- Khi server đang ngủ (Render free), app thử kết nối lại trong 30–90 giây, hiển thị "đang đánh thức server" và thông báo rõ nếu quá hạn.
+- Tên/avatar hai bên lấy từ hồ sơ tài khoản (hoặc tên khách đã nhập). Server không tin tên client gửi khi socket có cookie hợp lệ.
 
 ### Test online trên cùng máy tính
 
@@ -139,48 +218,75 @@ Mở URL công khai mà công cụ in ra. Giữ nguyên một origin cho cả ha
 
 ## Triển khai
 
-### Render
+### Render + PostgreSQL (Neon hoặc Supabase)
 
-1. Đưa mã nguồn lên GitHub.
-2. Render → **New → Web Service** → chọn repo.
-3. Runtime: **Node**. Build command: `npm install`. Start command: `npm start`.
-4. Health check path: `/health`.
-5. Không cần biến môi trường; Render tự cấp `PORT`. Nếu dùng tên miền riêng cho API khác origin, đặt `CORS_ORIGIN=https://ten-mien-cua-ban`.
+1. Tạo database PostgreSQL miễn phí tại [Neon](https://neon.tech) hoặc [Supabase](https://supabase.com), lấy chuỗi kết nối dạng `postgresql://...` (Neon/Supabase thường kèm `?sslmode=require`).
+2. Đưa mã nguồn lên GitHub.
+3. Render → **New → Blueprint**, chọn repo (đọc `render.yaml`) hoặc tạo **Web Service** thủ công.
+   - Runtime: **Node**. Build: `npm install`. Start: `npm start`. Health check: `/health`.
+   - Node version ≥ 22.13 (đặt `NODE_VERSION=22.13.0` nếu Render chọn bản cũ).
+4. Biến môi trường trên Render:
+   - `DATABASE_URL` = chuỗi kết nối PostgreSQL (đặt ở Render Environment, **không commit**).
+   - `SESSION_SECRET` = chuỗi ngẫu nhiên ≥ 32 ký tự (`render.yaml` dùng `generateValue: true`).
+   - `NODE_ENV=production`, `TRUST_PROXY=1`, `PGSSL=true` nếu nhà cung cấp yêu cầu SSL.
+5. Deploy. Migration tự chạy khi server khởi động; có thể chạy lại bằng `npm run migrate` trong Render Shell.
+6. Mở URL Render, kiểm tra `/health` trả `{"status":"ok"}`, sau đó thử đăng ký và một ván online giữa hai trình duyệt.
+
+`render.yaml` trong repo khai báo web service, health check, `SESSION_SECRET` tự sinh và một PostgreSQL free (nếu dùng Blueprint). Nếu dùng Neon/Supabase bên ngoài, xoá khối `databases` trong `render.yaml` và dán `DATABASE_URL` thủ công.
 
 ### Railway
 
 1. Railway → **New Project → Deploy from GitHub repo**.
-2. Nixpacks tự nhận Node và chạy `npm start`. Không cần đặt `PORT`.
-3. Thêm health check `/health` nếu muốn.
+2. Thêm plugin PostgreSQL, gán `DATABASE_URL` từ plugin vào service.
+3. Nixpacks tự nhận Node và chạy `npm start`; đặt `NODE_ENV=production`, `SESSION_SECRET`, `TRUST_PROXY=1`.
+4. Health check `/health` nếu muốn.
+
+### SQLite trên môi trường deploy
+
+Nếu không đặt `DATABASE_URL`, server dùng SQLite tại `data/meo.db`. Trên Render/Railway, **filesystem thường là tạm thời**: mỗi lần deploy/restart có thể xoá `data/meo.db`, làm mất tài khoản và lịch sử. Chỉ dùng SQLite khi:
+
+- chạy local/LAN, hoặc
+- gắn **persistent disk** và đặt `DATABASE_FILE` trỏ vào thư mục được mount (ví dụ `/var/data/meo.db`).
+
+Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 
 ### Lưu ý khi vận hành
 
-- Phòng và điểm online chỉ nằm trong RAM: **khởi động lại hoặc deploy phiên bản mới sẽ xoá các phòng đang chơi**. Client sẽ nhận `room:closed` và quay về trang chủ.
+- **Phòng đang chơi nằm trong RAM**: khởi động lại hoặc deploy phiên bản mới sẽ xoá các phòng đang chơi (client nhận `room:closed` và về trang chủ). Tài khoản, lịch sử, thống kê nằm trong database nên **không mất**.
 - Ứng dụng chỉ chạy tốt với **một instance**. Muốn mở rộng ngang, cần Redis adapter cho Socket.IO và nơi lưu trạng thái phòng dùng chung (xem mục nâng cấp).
 - WebSocket phải được proxy hỗ trợ. Render/Railway mặc định đã hỗ trợ; với nginx, thêm header `Upgrade`/`Connection`.
+- Rate limit dựa trên `req.ip`; sau proxy phải đặt `TRUST_PROXY` đúng số hop, nếu không mọi người có thể bị tính chung một IP.
+- Phiên hết hạn được dọn mỗi giờ; xoá tài khoản thu hồi mọi phiên ngay lập tức.
 
 ### PWA
 
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
-- Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online cần server.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v4`) để người dùng nhận bản mới. Cache v4 đã gồm `ai-worker.js`, `ai-client.js` và `infinite-board.js`.
+- Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online và tài khoản cần server.
+- Service worker **không cache** `/api/*`, `/socket.io/*` hay `/health`, nên lịch sử và phiên đăng nhập luôn lấy dữ liệu mới.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v5`) để người dùng nhận bản mới. Cache v5 đã gồm `api.js` và toàn bộ module bàn ∞/AI.
 
 ---
 
 ## Kiểm thử tự động
 
 ```bash
-npm test          # chạy cả hai bộ test
-npm run test:ai
-npm run test:server
+npm test              # 85 test: ai + server + auth + history
+npm run test:ai       # 31 test
+npm run test:server   # 32 test
+npm run test:auth     # 15 test
+npm run test:history  # 7 test
 ```
 
-- `test/ai.test.mjs` (31 test): kiểm tra cấu hình cỡ bàn, thắng đủ 4 hướng ở góc/cạnh/giữa trên 3×3–8×8, chuỗi ngắn không thắng, không vòng qua cuối hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó/cỡ bàn chỉ trả ô trống, 72 ván AI tự chơi, thắng/chặn ngay của AI bàn lớn, và giới hạn thời gian của AI Khó bàn lớn. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn, giới hạn thời gian và AI tự đánh nhau luôn hợp lệ.
-- `test/server.test.mjs` (29 test): khởi động server thật ở cổng ngẫu nhiên và kiểm tra tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; thêm **cỡ bàn 4×4/8×8**: mặc định 3×3, từ chối cỡ sai, đúng luật thắng 4/5 quân, thắng 4×4, hòa kín bàn 4×4, đấu lại giữ cỡ bàn, F5 rejoin giữ `size`/`board`/`lastMove`, timer 30s/45s và timeout 8×8 không xử thua. Phần ∞ kiểm tra `size: 'infinite'`, vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng với toạ độ âm, F5 khôi phục 6 nước + vùng, đấu lại reset ván, và hòa khi chạm `INFINITE_MAX_MOVES`.
+Mỗi bộ test server khởi động một tiến trình thật ở cổng ngẫu nhiên với **SQLite tạm riêng** (`mkdtemp`), không chạm vào `data/meo.db` và tự dọn sau khi chạy. Có thể kiểm tra PostgreSQL bằng cách chạy server với `DATABASE_URL` trỏ tới database test và lặp lại các kịch bản thủ công; bộ test tự động hiện chạy trên SQLite.
+
+- `test/ai.test.mjs` (31 test): cấu hình cỡ bàn, thắng đủ 4 hướng ở góc/cạnh/giữa trên 3×3–8×8, chuỗi ngắn không thắng, không vòng qua cuối hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó/cỡ bàn chỉ trả ô trống, 72 ván AI tự chơi, thắng/chặn ngay của AI bàn lớn, giới hạn thời gian AI Khó. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn và AI tự đánh nhau luôn hợp lệ.
+- `test/server.test.mjs` (32 test): tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; **cỡ bàn 4×4/8×8** (luật 4/5 quân, hòa kín bàn, F5 giữ `size`/`board`/`lastMove`, timer 30s/45s); **∞** (vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng toạ độ âm, F5 khôi phục nước + vùng, hòa `INFINITE_MAX_MOVES`); **tài khoản** (danh tính lấy từ cookie, không lộ `userId`, một tài khoản không chiếm hai ghế, khách vẫn vào phòng tài khoản bằng tên riêng).
+- `test/auth.test.mjs` (15 test): cookie httpOnly/SameSite/Path/Max-Age, phiên 7 ngày khi không ghi nhớ, tên đăng nhập/mật khẩu yếu bị từ chối, trùng tên không phân biệt hoa thường, lỗi đăng nhập chung, CSRF thiếu Origin/nội dung không JSON, cập nhật hồ sơ, đổi mật khẩu thu hồi phiên khác nhưng giữ phiên hiện tại, phiên hết hạn bị xoá, đăng xuất, xoá tài khoản ẩn danh + thu hồi phiên, rate limit đăng nhập, migration chạy hai lần vẫn idempotent, production từ chối khởi động khi thiếu `SESSION_SECRET`.
+- `test/history.test.mjs` (7 test): khách với khách không lưu ván; ván một tài khoản + khách lưu ảnh chụp đối thủ; chi tiết replay có đủ nước/đường thắng và chỉ người trong ván xem được; phân trang/lọc cỡ bàn/lọc kết quả + thống kê; đấu lại tạo bản ghi mới; thắng rồi ngắt kết nối chỉ lưu một lần; đối thủ xoá tài khoản hiển thị ẩn danh.
 
 ---
 
-## 38 kịch bản kiểm thử thủ công
+## 52 kịch bản kiểm thử thủ công
 
 | # | Kịch bản | Cách làm | Kết quả mong đợi |
 | --- | --- | --- | --- |
@@ -222,6 +328,20 @@ npm run test:server
 | 36 | ∞: mobile 320–360px | Thu cửa sổ về 320px, chơi ∞ | Không có thanh cuộn ngang; chạm đặt quân, kéo để pan, chụm để zoom mà không cuộn trang; chữ toạ độ/số nước không tràn |
 | 37 | ∞: online, F5 và đấu lại | Tạo phòng ∞ với hai cửa sổ; đánh vài nước, F5, đấu lại | Hai bên thấy cùng toạ độ/thứ tự nước; F5 khôi phục đủ nước, vùng, nước cuối và lượt trong 60 giây; đấu lại reset bàn ∞ và đổi người đi trước |
 | 38 | ∞: hòa kỹ thuật & bảng điểm | Chạy `INFINITE_MAX_MOVES=8 npm start`, chơi đủ 8 nước không ai thắng; mở Bảng điểm | Ván hòa với thông báo đạt giới hạn, bàn bị khóa; bảng điểm có mục **∞ Vô cực** riêng, không ảnh hưởng điểm 3×3–8×8 |
+| 39 | Đăng ký & thanh tài khoản | Trang chủ → **Đăng ký**, nhập tên đăng nhập hợp lệ, tên hiển thị, mật khẩu mạnh; bấm 👁 để hiện mật khẩu | Tạo tài khoản thành công, thanh tài khoản hiện avatar/tên/@username; ô tên và avatar trang chủ bị khóa; tải lại trang vẫn đăng nhập |
+| 40 | Đăng nhập / ghi nhớ / đăng xuất | Đăng xuất, đăng nhập lại với **Ghi nhớ** bật rồi tắt; kiểm tra cookie và hạn phiên | Bật ghi nhớ: phiên ~30 ngày; tắt: ~7 ngày. Đăng xuất xoá cookie và trở về trạng thái khách |
+| 41 | Khách không có lịch sử | Chơi một ván online với tư cách khách, kết thúc; thử mở Lịch sử | Không có mục Lịch sử trên thanh tài khoản khách; nếu gọi `/api/history` nhận `401 AUTH_REQUIRED` |
+| 42 | Ván tài khoản + khách | Tài khoản A tạo phòng, khách B vào và chơi hết ván; A mở Lịch sử | Có đúng một bản ghi cho A, đối thủ hiển thị tên/avatar của khách; khách không có bản ghi |
+| 43 | Lịch sử: lọc & phân trang | Chơi ≥ 3 ván khác cỡ bàn, mở Lịch sử, đổi bộ lọc cỡ bàn/kết quả, bấm **Tải thêm** | Danh sách đúng bộ lọc, trang tăng dần, hết dữ liệu thì nút tải thêm ẩn; ngày giờ/cỡ bàn/số nước đúng |
+| 44 | Xem lại đầy đủ | Mở một ván trong Lịch sử | Đầu/trước/sau/cuối đúng vị trí, thanh tua và bộ đếm `n/tổng` khớp, phát tự chạy và dừng được, đổi tốc độ 0.5×–4×, nước hiện tại được đánh dấu, tới cuối hiện đường thắng |
+| 45 | Quyền xem ván | Đăng nhập tài khoản C không tham gia ván, gọi `/api/history/<id>` | Nhận `404 MATCH_NOT_FOUND`, không lộ nước đi; chưa đăng nhập nhận `401` |
+| 46 | Đổi mật khẩu | Đăng nhập cùng tài khoản ở hai trình duyệt; đổi mật khẩu ở trình duyệt 1 | Trình duyệt 1 vẫn dùng được; trình duyệt 2 bị đăng xuất ở lần gọi API kế tiếp; mật khẩu cũ không đăng nhập được |
+| 47 | Xoá tài khoản mềm | Mở Hồ sơ → Xoá tài khoản, nhập mật khẩu, xác nhận | Về trạng thái khách, mọi phiên bị thu hồi; đối thủ vẫn thấy ván cũ với tên "Người chơi đã xóa"; không đăng nhập lại được |
+| 48 | Link mời khi chưa đăng nhập | Tạo phòng, mở link trong cửa sổ ẩn danh | Hiện đăng nhập/đăng ký kèm ghi chú được mời; sau khi đăng ký hoặc **Chơi với tư cách khách** tự mở hộp xác nhận đúng phòng, giữ `?room` cho tới khi vào |
+| 49 | Link mời khi đã đăng nhập | Tài khoản B đã đăng nhập mở link phòng của A | Hộp xác nhận hiện avatar/tên chủ phòng, cỡ bàn, luật thắng; bấm **Vào ván** thì cả hai vào game với tên tài khoản |
+| 50 | Link sai / đầy / đóng | Mở `?room=ZZZZZ`, link phòng đã đóng, phòng đủ 2 người | Báo rõ lỗi tương ứng, tự bỏ `?room` khỏi URL, có nút về trang chủ; không kẹt ở màn hình trống |
+| 51 | Offline với tài khoản | Đăng nhập rồi chặn mạng, tải lại trang, chơi AI/2 người; mở thử Lịch sử | App vẫn vào trang chủ và chơi AI/2 người bình thường; Lịch sử báo lỗi mạng rõ ràng; khi có mạng lại thì tài khoản/lịch sử hoạt động |
+| 52 | EN + 360px cho màn tài khoản | Đổi sang English, thu cửa sổ 360px, mở Đăng nhập/Hồ sơ/Lịch sử/Replay | Toàn bộ nhãn, lỗi, nút, bộ lọc, replay đổi tiếng Anh; không có thanh cuộn ngang; nút bấm được, bảng không tràn |
 
 Thử thêm: chọn 8×8 rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -237,9 +357,13 @@ Thử thêm: chọn 8×8 rồi bật Giảm chuyển động → không nhấp n
 - **AI Khó chỉ hoàn hảo trên 3×3.** Bàn 3×3 dùng minimax đầy đủ nên không thể thua. Bàn 4×4–8×8 dùng iterative deepening + alpha-beta trong ngân sách ~800ms/lượt, giới hạn độ sâu (4×4 sâu hơn, 7×7–8×8 nông hơn) và chỉ xét các ô gần quân đã có; bàn ∞ dùng cùng cách nhưng trên `Map` thưa. AI chơi tốt nhưng có thể bị đánh bại, đặc biệt trên bàn lớn hoặc bàn ∞.
 - **Bàn ∞ không có "mép bàn".** Chuỗi thắng được quét trực tiếp trên toạ độ nguyên, nên chuỗi dài hơn 5 vẫn thắng và không bao giờ vòng từ hàng này sang hàng khác. Người chơi chỉ đánh được trong vùng hiện tại; vùng tự mở khi quân tiến ra xa.
 - **Điểm lưu riêng theo cỡ bàn.** Mỗi cỡ bàn có bảng AI (3 độ khó) và 2 người riêng; dữ liệu kiểu cũ (không có cỡ bàn) được chuyển vào mục 3×3 khi tải lần đầu, không xóa dữ liệu.
-- **`playerKey` chỉ dùng để vào lại phòng**, được trả trong ack tạo/join/rejoin và lưu sessionStorage; không bao giờ xuất hiện trong `room:state` gửi cho người khác.
-- **Phòng trong RAM.** Phù hợp một instance, đơn giản và không cần cơ sở dữ liệu; đánh đổi là mất phòng khi restart.
-- **Không tài khoản, không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng.
+- **`playerKey` chỉ dùng để vào lại phòng**, được trả trong ack tạo/join/rejoin và lưu sessionStorage; không bao giờ xuất hiện trong `room:state` gửi cho người khác. Khi socket có cookie hợp lệ, danh tính (tên/avatar/user_id) lấy từ database và bỏ qua tên client gửi.
+- **Phòng vẫn nằm trong RAM; tài khoản/lịch sử nằm trong DB.** Cách này giữ nguyên mô hình phòng cũ (một instance, không cần Redis) nhưng vẫn lưu được kết quả lâu dài. Khởi động lại server làm rơi phòng đang chơi, không làm mất lịch sử đã ghi.
+- **Một lớp SQL, hai adapter.** `db.js` viết SQL với placeholder `?`, adapter PostgreSQL đổi thành `$1..$n`; kiểu ID là TEXT (UUID), thời gian là epoch ms dạng BIGINT. Nhờ vậy cùng một bộ migration/query chạy trên SQLite và PostgreSQL; SQLite được tuần tự hoá bằng hàng đợi promise, PostgreSQL dùng transaction riêng của `pg`.
+- **Lưu ván đúng một lần.** `finishRound` đặt cờ `matchSaved` trước khi ghi bất đồng bộ; thắng + ngắt kết nối gần như đồng thời không tạo hai bản ghi. Ghi `matches` và cộng `user_stats` trong **một transaction**; lỗi DB chỉ log, không ném ra ngoài.
+- **Mật khẩu và phiên tách biệt.** Mật khẩu dùng scrypt với salt riêng từng người; token phiên là 32 byte ngẫu nhiên, chỉ SHA-256 của token được lưu. Đăng nhập sai luôn trả cùng một lỗi và vẫn chạy scrypt giả để giảm lộ thông tin thời gian. Đổi mật khẩu thu hồi các phiên khác; xoá tài khoản thu hồi tất cả.
+- **Xoá tài khoản là xoá mềm.** Bản ghi `users` được giữ để lịch sử không mồ côi; username/display_name bị ẩn danh và API lịch sử trả "Người chơi đã xóa" cho cả hai phía, tránh lộ tên cũ.
+- **Không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng; không có email/khôi phục mật khẩu tự động trong phạm vi phiên bản này.
 - **Không dùng ảnh/font nhân vật có bản quyền.** Font tải từ Google Fonts, mọi hình khác là SVG nội bộ; khi offline, font tự fallback hệ thống.
 
 ---
@@ -256,6 +380,14 @@ Thử thêm: chọn 8×8 rồi bật Giảm chuyển động → không nhấp n
 | Âm thanh không phát | Trình duyệt chặn autoplay trước thao tác đầu | Bấm vào màn hình một lần; kiểm tra nút âm thanh đang bật |
 | Không cài được PWA | Không phải HTTPS/localhost | Dùng HTTPS khi triển khai |
 | Vào link phòng nhưng bị đá về nhà | Tab khác đã thay thế phiên | Đóng tab cũ, vào lại link ở tab đang dùng |
+| Server thoát ngay khi chạy production | Thiếu `SESSION_SECRET` hoặc ngắn hơn 32 ký tự | Đặt biến môi trường đủ mạnh; không dùng giá trị mẫu trong repo |
+| Lỗi `SQLite tích hợp cần Node.js >= 22.13` | Node quá cũ | Nâng Node hoặc đặt `DATABASE_URL` cho PostgreSQL |
+| Mất tài khoản sau khi deploy | Đang dùng SQLite trên filesystem tạm | Dùng PostgreSQL, hoặc gắn persistent disk và đặt `DATABASE_FILE` vào đó |
+| Lỗi kết nối PostgreSQL/SSL | `DATABASE_URL` sai hoặc thiếu SSL | Kiểm tra chuỗi kết nối, thêm `?sslmode=require` hoặc `PGSSL=true` |
+| Đăng nhập xong nhưng lần sau mất phiên | Cookie bị chặn, sai origin hoặc chạy production qua HTTP | Dùng HTTPS khi production; mở app và API cùng origin (hoặc đặt `CORS_ORIGIN` đúng) |
+| `429 RATE_LIMITED` | Đăng ký/đăng nhập quá nhiều | Chờ theo `retryAfter`; kiểm tra `TRUST_PROXY` nếu đứng sau proxy để IP không bị gộp |
+| Lịch sử trống | Đang chơi bằng khách, hoặc ván chưa kết thúc | Đăng nhập tài khoản trước khi chơi; lịch sử chỉ lưu ván online đã kết thúc và có ít nhất một tài khoản |
+| Migration lỗi khi khởi động | Database mất kết nối hoặc tài khoản DB thiếu quyền tạo bảng | Chạy `npm run migrate` để xem lỗi; cấp quyền DDL cho user database |
 
 ---
 

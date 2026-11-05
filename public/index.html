@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#FFF4E0" />
     <meta
       name="description"
-      content="Meo Meo Caro - game cờ ca-rô 3x3 đến 8x8 chủ đề mèo: chơi với máy, 2 người cùng máy và online qua mã phòng."
+      content="Meo Meo Caro - game cờ ca-rô 3x3 và bàn vô cực chủ đề mèo: chơi với máy, 2 người cùng máy và online qua mã phòng."
     />
     <title>Meo Meo Caro 🐾</title>
 
@@ -40,6 +40,29 @@
               <span class="brand-paw" id="brand-paw" aria-hidden="true"></span>
               <h1 class="logo" data-i18n="appName">Meo Meo Caro</h1>
               <p class="tagline" data-i18n="tagline"></p>
+            </div>
+
+            <div class="account-bar" id="home-account">
+              <div class="account-guest" id="account-guest">
+                <span class="account-guest-text" data-i18n="guestModeNote"></span>
+                <div class="account-guest-actions">
+                  <button id="btn-login-home" class="btn mini primary" type="button" data-i18n="login"></button>
+                  <button id="btn-register-home" class="btn mini secondary" type="button" data-i18n="register"></button>
+                </div>
+              </div>
+              <div class="account-signed" id="account-signed" hidden>
+                <span class="account-avatar" id="account-avatar" aria-hidden="true"></span>
+                <div class="account-copy">
+                  <strong id="account-display-name">—</strong>
+                  <small id="account-username"></small>
+                </div>
+                <div class="account-menu">
+                  <button class="pill-btn small" type="button" data-account="profile" data-i18n="profile"></button>
+                  <button class="pill-btn small" type="button" data-account="history" data-i18n="history"></button>
+                  <button class="pill-btn small" type="button" data-account="stats" data-i18n="stats"></button>
+                  <button id="btn-logout" class="pill-btn small" type="button" data-i18n="logout"></button>
+                </div>
+              </div>
             </div>
 
             <div class="profile-card">
@@ -103,6 +126,202 @@
 
             <p class="footer-note" data-i18n="footer"></p>
           </div>
+        </div>
+      </section>
+
+      <!-- ================= DANG NHAP / DANG KY ================= -->
+      <section id="screen-auth" class="screen" data-screen="auth" hidden>
+        <header class="screen-head">
+          <button id="auth-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="accountTitle"></h2>
+        </header>
+
+        <div class="account-card auth-card">
+          <p id="auth-invite-note" class="hint" hidden></p>
+
+          <div class="auth-tabs" role="tablist">
+            <button id="auth-tab-login" class="auth-tab" type="button" role="tab" aria-selected="true" data-i18n="login"></button>
+            <button id="auth-tab-register" class="auth-tab" type="button" role="tab" aria-selected="false" data-i18n="register"></button>
+          </div>
+
+          <form id="login-form" class="auth-form" autocomplete="on">
+            <label class="field-label" for="login-username" data-i18n="username"></label>
+            <input
+              id="login-username"
+              class="text-input"
+              type="text"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="20"
+              required
+            />
+            <label class="field-label" for="login-password" data-i18n="password"></label>
+            <div class="password-row">
+              <input
+                id="login-password"
+                class="text-input"
+                type="password"
+                autocomplete="current-password"
+                maxlength="72"
+                required
+              />
+              <button class="password-toggle" type="button" data-toggle-password="login-password" data-i18n-aria="showPassword">👁</button>
+            </div>
+            <label class="check-row" for="login-remember">
+              <input id="login-remember" type="checkbox" checked />
+              <span data-i18n="rememberMe"></span>
+            </label>
+            <p id="login-error" class="form-error" role="alert" hidden></p>
+            <button id="login-submit" class="btn primary wide" type="submit" data-i18n="login"></button>
+          </form>
+
+          <form id="register-form" class="auth-form" autocomplete="on" hidden>
+            <label class="field-label" for="register-username" data-i18n="username"></label>
+            <input
+              id="register-username"
+              class="text-input"
+              type="text"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="20"
+              required
+            />
+            <p class="field-help" data-i18n="usernameHelp"></p>
+
+            <label class="field-label" for="register-display-name" data-i18n="displayName"></label>
+            <input
+              id="register-display-name"
+              class="text-input"
+              type="text"
+              autocomplete="nickname"
+              maxlength="12"
+              spellcheck="false"
+            />
+
+            <label class="field-label" for="register-password" data-i18n="password"></label>
+            <div class="password-row">
+              <input
+                id="register-password"
+                class="text-input"
+                type="password"
+                autocomplete="new-password"
+                maxlength="72"
+                required
+              />
+              <button class="password-toggle" type="button" data-toggle-password="register-password" data-i18n-aria="showPassword">👁</button>
+            </div>
+            <div class="strength" aria-hidden="true">
+              <div class="strength-track"><div id="password-strength-fill" class="strength-fill"></div></div>
+              <span id="password-strength-text" class="strength-text"></span>
+            </div>
+
+            <span class="field-label" data-i18n="chooseAvatar"></span>
+            <div class="avatar-list" id="auth-avatar-list" role="group" data-i18n-aria="chooseAvatar"></div>
+
+            <label class="check-row" for="register-remember">
+              <input id="register-remember" type="checkbox" checked />
+              <span data-i18n="rememberMe"></span>
+            </label>
+            <p id="register-error" class="form-error" role="alert" hidden></p>
+            <button id="register-submit" class="btn primary wide" type="submit" data-i18n="register"></button>
+          </form>
+
+          <div class="divider"><span data-i18n="or"></span></div>
+          <button id="btn-auth-guest" class="btn ghost wide" type="button" data-i18n="playAsGuest"></button>
+          <p class="hint" data-i18n="guestPlayNote"></p>
+        </div>
+      </section>
+
+      <!-- ================= HO SO ================= -->
+      <section id="screen-profile" class="screen" data-screen="profile" hidden>
+        <header class="screen-head">
+          <button id="profile-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="profileTitle"></h2>
+        </header>
+
+        <div class="account-card">
+          <div class="profile-mini">
+            <span class="avatar avatar-lg" id="profile-avatar-preview" aria-hidden="true"></span>
+            <div class="profile-mini-copy">
+              <strong id="profile-display-name">—</strong>
+              <small id="profile-username"></small>
+            </div>
+          </div>
+
+          <label class="field-label" for="profile-name-input" data-i18n="displayName"></label>
+          <input id="profile-name-input" class="text-input" type="text" maxlength="12" autocomplete="nickname" />
+          <span class="field-label" data-i18n="chooseAvatar"></span>
+          <div class="avatar-list" id="profile-avatar-list" role="group" data-i18n-aria="chooseAvatar"></div>
+          <p id="profile-error" class="form-error" role="alert" hidden></p>
+          <p id="profile-success" class="form-success" role="status" hidden></p>
+          <button id="profile-save" class="btn primary wide" type="button" data-i18n="saveChanges"></button>
+
+          <hr class="soft-rule" />
+
+          <h3 class="section-title" data-i18n="changePassword"></h3>
+          <form id="password-form" class="auth-form" autocomplete="on">
+            <label class="field-label" for="current-password" data-i18n="currentPassword"></label>
+            <input id="current-password" class="text-input" type="password" autocomplete="current-password" maxlength="72" required />
+            <label class="field-label" for="new-password" data-i18n="newPassword"></label>
+            <input id="new-password" class="text-input" type="password" autocomplete="new-password" maxlength="72" required />
+            <p id="password-error" class="form-error" role="alert" hidden></p>
+            <p id="password-success" class="form-success" role="status" hidden></p>
+            <button id="password-submit" class="btn secondary wide" type="submit" data-i18n="changePassword"></button>
+          </form>
+
+          <hr class="soft-rule" />
+
+          <h3 class="section-title danger-text" data-i18n="deleteAccount"></h3>
+          <p class="hint" data-i18n="deleteAccountWarn"></p>
+          <label class="field-label" for="delete-password" data-i18n="currentPassword"></label>
+          <input id="delete-password" class="text-input" type="password" autocomplete="current-password" maxlength="72" />
+          <p id="delete-error" class="form-error" role="alert" hidden></p>
+          <button id="delete-account" class="btn danger wide" type="button" data-i18n="deleteAccount"></button>
+        </div>
+      </section>
+
+      <!-- ================= LICH SU DAU ================= -->
+      <section id="screen-history" class="screen" data-screen="history" hidden>
+        <header class="screen-head">
+          <button id="history-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="historyTitle"></h2>
+        </header>
+
+        <div class="account-card">
+          <div class="history-filters">
+            <label class="field-label" for="history-size" data-i18n="boardSizeTitle"></label>
+            <select id="history-size" class="select">
+              <option value="" data-i18n="allSizes"></option>
+            </select>
+            <label class="field-label" for="history-result" data-i18n="resultFilter"></label>
+            <select id="history-result" class="select">
+              <option value="" data-i18n="allResults"></option>
+              <option value="win" data-i18n="wins"></option>
+              <option value="loss" data-i18n="losses"></option>
+              <option value="draw" data-i18n="draws"></option>
+            </select>
+          </div>
+
+          <p id="history-status" class="hint" role="status" hidden></p>
+          <div id="history-list" class="history-list"></div>
+          <p id="history-empty" class="empty-state" hidden data-i18n="historyEmpty"></p>
+          <button id="history-more" class="btn secondary wide" type="button" data-i18n="loadMore" hidden></button>
+        </div>
+      </section>
+
+      <!-- ================= THONG KE ================= -->
+      <section id="screen-stats" class="screen" data-screen="stats" hidden>
+        <header class="screen-head">
+          <button id="stats-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="statsTitle"></h2>
+        </header>
+
+        <div class="account-card">
+          <p id="stats-status" class="hint" role="status" hidden></p>
+          <div id="stats-summary" class="stats-summary"></div>
+          <div id="stats-table" class="stats-table"></div>
         </div>
       </section>
 
@@ -333,6 +552,28 @@
           </div>
         </div>
 
+        <div id="replay-bar" class="replay-bar" hidden>
+          <div class="replay-buttons">
+            <button id="replay-first" class="infinite-btn replay-btn" type="button" data-i18n-title="replayFirst" data-i18n-aria="replayFirst">⏮</button>
+            <button id="replay-prev" class="infinite-btn replay-btn" type="button" data-i18n-title="replayPrev" data-i18n-aria="replayPrev">◀</button>
+            <button id="replay-play" class="infinite-btn replay-btn replay-play" type="button" data-i18n-title="replayPlay" data-i18n-aria="replayPlay">▶</button>
+            <button id="replay-next" class="infinite-btn replay-btn" type="button" data-i18n-title="replayNext" data-i18n-aria="replayNext">▶</button>
+            <button id="replay-last" class="infinite-btn replay-btn" type="button" data-i18n-title="replayLast" data-i18n-aria="replayLast">⏭</button>
+          </div>
+          <input id="replay-range" class="replay-range" type="range" min="0" max="0" value="0" step="1" aria-label="Replay position" />
+          <div class="replay-meta">
+            <span id="replay-counter"></span>
+            <label class="sr-only" for="replay-speed" data-i18n="replaySpeed"></label>
+            <select id="replay-speed" class="select select-mini">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+            <button id="replay-exit" class="btn mini ghost" type="button" data-i18n="exitReplay"></button>
+          </div>
+        </div>
+
         <p id="game-status" class="game-status" aria-live="polite"></p>
         <p id="game-record" class="game-record" hidden></p>
 
@@ -434,6 +675,30 @@
           <div class="scores-body" id="scores-body"></div>
           <div class="modal-actions">
             <button id="btn-reset-scores" class="btn ghost small" type="button" data-i18n="resetScores"></button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="dialog-invite" class="modal" aria-labelledby="invite-title">
+      <div class="modal-inner">
+        <header class="modal-head">
+          <h2 id="invite-title" data-i18n="inviteTitle"></h2>
+          <button class="modal-close" type="button" data-close="dialog-invite" data-i18n-aria="close">×</button>
+        </header>
+        <div class="modal-body">
+          <p id="invite-note" class="hint"></p>
+          <div class="invite-card">
+            <span class="avatar avatar-lg" id="invite-avatar" aria-hidden="true"></span>
+            <div class="invite-copy">
+              <strong id="invite-host">—</strong>
+              <span id="invite-size" class="hint"></span>
+            </div>
+          </div>
+          <p id="invite-error" class="form-error" role="alert" hidden></p>
+          <div class="modal-actions">
+            <button id="invite-join" class="btn primary" type="button" data-i18n="joinGame"></button>
+            <button id="invite-home" class="btn ghost" type="button" data-i18n="home"></button>
           </div>
         </div>
       </div>

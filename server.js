@@ -11,6 +11,9 @@ import express from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { Server } from 'socket.io';
+import { closeDatabase, databaseKind, migrate, query } from './db.js';
+import { installAuth, userFromCookieHeader } from './auth.js';
+import { installHistory, saveMatchRecord } from './history.js';
 import {
   DEFAULT_BOARD_SIZE,
   INFINITE,
@@ -30,6 +33,19 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || '').trim();
+const IS_PROD = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = (process.env.TRUST_PROXY || '').trim();
+
+if (IS_PROD && !String(process.env.SESSION_SECRET || '').trim()) {
+  console.error(
+    '[mmc] SESSION_SECRET bat buoc khi NODE_ENV=production. Hay dat chuoi ngau nhien >= 32 ky tu.'
+  );
+  process.exit(1);
+}
+if (IS_PROD && String(process.env.SESSION_SECRET || '').trim().length < 32) {
+  console.error('[mmc] SESSION_SECRET phai dai it nhat 32 ky tu.');
+  process.exit(1);
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -46,6 +62,10 @@ const io = new Server(httpServer, {
 });
 
 app.disable('x-powered-by');
+if (TRUST_PROXY) {
+  const hops = Number(TRUST_PROXY);
+  app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : TRUST_PROXY === '1');
+}
 
 // Helmet: cho phep inline style cua Google Fonts va ket noi WebSocket cung origin.
 app.use(
@@ -85,9 +105,30 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.use('/api', express.json({ limit: '10kb' }));
+installAuth(app);
+installHistory(app);
+
 // Fallback 404 gon gang (khong lo thong tin he thong)
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' });
+});
+
+app.use((error, _req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  if (error?.type === 'entity.too.large') {
+    res.status(413).json({ ok: false, code: 'BODY_TOO_LARGE' });
+    return;
+  }
+  if (error instanceof SyntaxError || error?.type === 'entity.parse.failed') {
+    res.status(400).json({ ok: false, code: 'INVALID_JSON' });
+    return;
+  }
+  console.error('[mmc] request failed', error?.message || error);
+  res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
 });
 
 // ---------------------------------------------------------------------------
@@ -121,7 +162,7 @@ const rooms = new Map();
 function turnMsFor(size) {
   if (TURN_MS_OVERRIDE) return TURN_MS_OVERRIDE;
   if (isInfiniteSize(size)) return 45_000;
-  return size >= 5 ? 45_000 : 30_000;
+  return 30_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +235,9 @@ function createRoom(id, size = DEFAULT_BOARD_SIZE) {
     rematchVotes: new Set(),
     turnDeadline: null,
     starter: null,
+    moveLog: [],
+    matchStartedAt: null,
+    matchSaved: false,
     lastActivity: Date.now(),
     timers: { grace: null, close: null },
   };
@@ -203,11 +247,24 @@ function createPlayer(socket, name, avatar, symbol) {
   return {
     socketId: socket.id,
     playerKey: crypto.randomUUID(),
+    userId: socket.data?.user?.id || null,
     name,
     avatar,
     symbol,
     connected: true,
     lastEmote: 0,
+  };
+}
+
+/** Ten/avatar cua nguoi da dang nhap luon lay tu DB, khong tin client. */
+function identityFor(socket, payload) {
+  const user = socket.data?.user;
+  if (user) {
+    return { name: sanitizeName(user.displayName) || user.username, avatar: sanitizeAvatar(user.avatar) };
+  }
+  return {
+    name: sanitizeName(payload?.name) || 'Mèo Bí Ẩn',
+    avatar: sanitizeAvatar(payload?.avatar),
   };
 }
 
@@ -335,11 +392,15 @@ function startRound(room, firstSymbol) {
   room.winner = null;
   room.winLine = null;
   room.rematchVotes.clear();
+  room.moveLog = [];
+  room.matchSaved = false;
+  room.matchStartedAt = Date.now();
   room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
   touch(room);
 }
 
 function finishRound(room, winner, line, reason) {
+  if (room.status === 'finished') return;
   room.status = 'finished';
   room.winner = winner;
   room.winLine = line;
@@ -348,6 +409,21 @@ function finishRound(room, winner, line, reason) {
   if (winner === 'A' || winner === 'B') room.score[winner] += 1;
   else if (winner === 'draw') room.score.draw += 1;
   touch(room);
+
+  const endReason =
+    reason === 'maxMoves'
+      ? 'move_limit'
+      : reason === 'abandon'
+        ? 'disconnect'
+        : reason === 'leave'
+          ? 'leave'
+          : reason === 'draw'
+            ? 'draw'
+            : 'win';
+  void saveMatchRecord(room, {
+    result: winner === 'A' || winner === 'B' || winner === 'draw' ? winner : 'draw',
+    endReason,
+  });
 
   sendState(room);
   io.to(room.id).emit('game:over', {
@@ -360,6 +436,7 @@ function finishRound(room, winner, line, reason) {
 function applyMove(room, index, symbol) {
   room.board[index] = symbol;
   room.lastMove = index;
+  room.moveLog.push({ i: index, s: symbol });
   touch(room);
 
   const line = checkWinFromMove(room.board, room.size, room.winLength, index);
@@ -381,6 +458,7 @@ function applyMove(room, index, symbol) {
 function applyInfiniteMove(room, x, y, symbol) {
   room.cells.set(cellKey(x, y), symbol);
   room.moves.push({ x, y, s: symbol });
+  room.moveLog.push({ x, y, s: symbol });
   room.lastMove = { x, y };
   room.region = computeRegion(room.moves);
   touch(room);
@@ -461,6 +539,16 @@ function markDisconnected(room, player) {
 // ---------------------------------------------------------------------------
 // Socket.IO
 // ---------------------------------------------------------------------------
+io.use(async (socket, next) => {
+  try {
+    socket.data.user = await userFromCookieHeader(socket.handshake.headers.cookie);
+  } catch (error) {
+    console.error('[mmc] socket session lookup failed', error.message);
+    socket.data.user = null;
+  }
+  next();
+});
+
 io.on('connection', (socket) => {
   socket.data.bucket = { start: 0, count: 0 };
 
@@ -481,12 +569,11 @@ io.on('connection', (socket) => {
       !isValidSize(rawSize) &&
       !isInfiniteSize(rawSize)
     ) {
-      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 den 8x8 hoac vo cuc.');
+      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 hoac vo cuc.');
     }
     const size = rawSize === undefined || rawSize === null ? DEFAULT_BOARD_SIZE : rawSize;
 
-    const name = sanitizeName(payload?.name) || 'Mèo Bí Ẩn';
-    const avatar = sanitizeAvatar(payload?.avatar);
+    const { name, avatar } = identityFor(socket, payload);
     const room = createRoom(uniqueRoomId(), size);
     const player = createPlayer(socket, name, avatar, 'A');
     room.players.push(player);
@@ -503,6 +590,32 @@ io.on('connection', (socket) => {
         roomId: room.id,
         playerKey: player.playerKey,
         state: publicState(room, player.playerKey),
+      });
+    }
+  });
+
+  // --- Xem thong tin phong truoc khi vao (link moi) ----------------------
+  socket.on('room:info', (payload, ack) => {
+    if (!allowEvent(socket)) return replyError(ack, 'rateLimit', 'Cham thoi meo oi!');
+    const roomId = normalizeRoomId(payload?.roomId);
+    const room = rooms.get(roomId);
+    if (!ROOM_CODE_RE.test(roomId) || !room) {
+      return replyError(ack, 'roomNotFound', 'Phong khong ton tai. Kiem tra lai ma nhe!');
+    }
+    const host = room.players.find((player) => player.symbol === 'A');
+    if (typeof ack === 'function') {
+      ack({
+        ok: true,
+        room: {
+          roomId: room.id,
+          size: room.size,
+          winLength: room.winLength,
+          hostName: host?.name || '',
+          hostAvatar: host?.avatar || 'orange',
+          status: room.status,
+          playerCount: room.players.length,
+          full: room.players.length >= MAX_PLAYERS || room.status !== 'waiting',
+        },
       });
     }
   });
@@ -525,9 +638,14 @@ io.on('connection', (socket) => {
     if (room.players.length >= MAX_PLAYERS || room.status !== 'waiting') {
       return replyError(ack, 'roomFull', 'Phong da du 2 nguoi roi!');
     }
+    if (
+      socket.data.user &&
+      room.players.some((existing) => existing.userId === socket.data.user.id)
+    ) {
+      return replyError(ack, 'accountInRoom', 'Tai khoan nay da ngoi trong phong.');
+    }
 
-    const name = sanitizeName(payload?.name) || 'Mèo Bí Ẩn';
-    const avatar = sanitizeAvatar(payload?.avatar);
+    const { name, avatar } = identityFor(socket, payload);
     const player = createPlayer(socket, name, avatar, 'B');
     room.players.push(player);
 
@@ -563,6 +681,9 @@ io.on('connection', (socket) => {
     const player = room.players.find((p) => p.playerKey === playerKey);
     if (!player) {
       return replyError(ack, 'rejoinFailed', 'Khong tim thay nguoi choi trong phong.');
+    }
+    if (player.userId && socket.data.user && socket.data.user.id !== player.userId) {
+      return replyError(ack, 'rejoinFailed', 'Phien nay thuoc ve tai khoan khac.');
     }
 
     // Tab moi thay tab cu: ngat tab cu khoi phong, khong de no tu rejoin vong lap
@@ -715,6 +836,10 @@ io.on('connection', (socket) => {
     }
     const { room, player } = ctx;
     log('left room', room.id, player.symbol, player.name);
+    if (room.status === 'playing' && room.moveLog.length > 0) {
+      const opponent = room.players.find((item) => item.symbol !== player.symbol);
+      if (opponent) finishRound(room, opponent.symbol, null, 'leave');
+    }
     destroyRoom(room, room.status === 'waiting' ? 'closed' : 'left');
     if (typeof ack === 'function') ack({ ok: true });
   });
@@ -785,6 +910,17 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 // Khoi dong
 // ---------------------------------------------------------------------------
+await migrate();
+log(`database: ${databaseKind()}`);
+
+setInterval(async () => {
+  try {
+    await query('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
+  } catch (error) {
+    console.error('[mmc] session cleanup failed', error.message);
+  }
+}, 60 * 60 * 1000).unref?.();
+
 httpServer.listen(PORT, () => {
   log(`Meo Meo Caro chay tai http://localhost:${PORT}`);
 });
@@ -795,7 +931,10 @@ function shutdown(signal) {
     destroyRoom(room, 'closed');
   }
   io.close();
-  httpServer.close(() => process.exit(0));
+  httpServer.close(async () => {
+    await closeDatabase().catch(() => {});
+    process.exit(0);
+  });
   setTimeout(() => process.exit(0), 3000).unref();
 }
 

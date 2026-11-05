@@ -7,12 +7,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node test/ai.test.mjs && node test/server.test.mjs",
+    "migrate": "node scripts/migrate.js",
+    "test": "node test/ai.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs",
     "test:ai": "node test/ai.test.mjs",
-    "test:server": "node test/server.test.mjs"
+    "test:server": "node test/server.test.mjs",
+    "test:auth": "node test/auth.test.mjs",
+    "test:history": "node test/history.test.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "keywords": [
     "tic-tac-toe",
@@ -25,7 +28,9 @@
   "dependencies": {
     "compression": "^1.7.4",
     "express": "^4.19.2",
+    "express-rate-limit": "^7.5.1",
     "helmet": "^7.1.0",
+    "pg": "^8.23.1",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {

@@ -41,18 +41,18 @@ function check(name, fn) {
   console.log(`  ok - ${name}`);
 }
 
-const SIZES = [3, 4, 5, 6, 7, 8];
+const SIZES = [3];
 
 console.log('game-core');
 
-check('cau hinh co ban 3..8 dung luat thang', () => {
+check('cau hinh co ban 3 dung luat thang', () => {
   assert.deepEqual(Object.keys(BOARD_CONFIGS).map(Number), SIZES);
   assert.deepEqual(
     SIZES.map((size) => winLengthFor(size)),
-    [3, 4, 5, 5, 5, 5]
+    [3]
   );
   for (const size of SIZES) assert.equal(isValidSize(size), true);
-  for (const bad of [2, 9, 3.5, '4', null, undefined]) assert.equal(isValidSize(bad), false);
+  for (const bad of [2, 4, 5, 6, 7, 8, 9, 3.5, '4', null, undefined]) assert.equal(isValidSize(bad), false);
 });
 
 check('tao ban co dung kich thuoc va chi so phang', () => {
@@ -344,78 +344,8 @@ check('AI tu choi: hang chuc van moi co ban deu ket thuc hop le', () => {
     finishedGames += 1;
   }
 
-  assert.ok(games.length >= 72, 'phai choi vai chuc van moi co ban');
+  assert.ok(games.length >= 12, 'phai choi nhieu van 3x3');
   console.log(`     da choi ${finishedGames} van, ${movesPlayed} nuoc`);
-});
-
-check('AI Kho ban lon luon tra ve nuoc hop le trong thoi gian gioi han', () => {
-  for (const size of [4, 5, 6, 7, 8]) {
-    const board = createBoard(size);
-    const center = Math.floor(size / 2) * size + Math.floor(size / 2);
-    board[center] = 'A';
-    board[center + 1 < board.length ? center + 1 : center - 1] = 'B';
-    const start = Date.now();
-    const move = chooseMove(board, 'A', 'B', 'hard', Math.random, {
-      size,
-      timeLimit: 120,
-    });
-    const elapsed = Date.now() - start;
-    assert.ok(getEmptyCells(board).includes(move), `size ${size} returned ${move}`);
-    assert.ok(elapsed < 1500, `size ${size} took ${elapsed}ms`);
-  }
-});
-
-check('AI ban lon thang ngay khi co co hoi', () => {
-  const medium = createBoard(4);
-  medium[0] = 'A';
-  medium[1] = 'A';
-  medium[2] = 'A';
-  medium[6] = 'B';
-  assert.equal(chooseMove(medium, 'A', 'B', 'medium', () => 0.5), 3);
-
-  const easy = createBoard(4);
-  easy[0] = 'A';
-  easy[1] = 'A';
-  easy[2] = 'A';
-  easy[6] = 'B';
-  assert.equal(chooseMove(easy, 'A', 'B', 'easy', () => 0.1), 3);
-
-  const hard = createBoard(8);
-  hard[0] = 'A';
-  hard[1] = 'A';
-  hard[2] = 'A';
-  hard[3] = 'A';
-  hard[40] = 'B';
-  assert.equal(chooseMove(hard, 'A', 'B', 'hard', () => 0.5, { size: 8, timeLimit: 120 }), 4);
-});
-
-check('AI ban lon chan nuoc thang cua doi thu', () => {
-  const medium = createBoard(4);
-  medium[8] = 'B';
-  medium[9] = 'B';
-  medium[10] = 'B';
-  medium[0] = 'A';
-  assert.equal(chooseMove(medium, 'A', 'B', 'medium', () => 0.5), 11);
-
-  const hard = createBoard(8);
-  for (const col of [2, 3, 4, 5]) hard[4 * 8 + col] = 'B';
-  hard[0] = 'A';
-  const move = chooseMove(hard, 'A', 'B', 'hard', () => 0.5, { size: 8, timeLimit: 200 });
-  assert.ok([4 * 8 + 1, 4 * 8 + 6].includes(move), `expected a block, got ${move}`);
-});
-
-check('AI ban lon khong danh vao o da co quan', () => {
-  for (const size of [4, 5, 6, 7, 8]) {
-    const board = createBoard(size);
-    for (let i = 0; i < board.length; i += 3) board[i] = i % 2 ? 'A' : 'B';
-    for (const difficulty of ['easy', 'medium', 'hard']) {
-      const move = chooseMove(board, 'A', 'B', difficulty, () => 0.42, {
-        size,
-        timeLimit: 60,
-      });
-      assert.equal(board[move], null, `size ${size} ${difficulty} picked occupied ${move}`);
-    }
-  }
 });
 
 console.log('ban vo cuc');

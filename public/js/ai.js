@@ -1,14 +1,8 @@
 /**
- * AI cho ban co 3x3 - 8x8.
+ * AI cho ban co 3x3 va ban vo cuc.
  *
- * - Ban 3x3: giu nguyen cach danh cu (hard = minimax toan bo, khong bao gio thua).
- * - Ban 4x4 - 8x8:
- *   easy:   gan nhu ngau nhien, thinh thoang thang/chan ngay.
- *   medium: thang -> chan -> cham diem chuoi rieng + uu tien gan giua, 20% ngau nhien.
- *   hard:   thang/chan ngay -> minimax + alpha-beta + danh gia chuoi, sau dan dan
- *           (iterative deepening) trong gioi han thoi gian.
- *
- * Hard tren ban lon rat manh nhung KHONG hoan hao nhu 3x3.
+ * - Ban 3x3: minimax toan bo (kho = khong bao gio thua).
+ * - Ban vo cuc: heuristic + iterative deepening trong Web Worker.
  */
 import {
   INFINITE,

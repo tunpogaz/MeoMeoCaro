@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: meo-meo-caro
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: meo-meo-caro-db
+          property: connectionString
+      - key: PGSSL
+        value: "true"
+
+databases:
+  - name: meo-meo-caro-db
+    plan: free
+    databaseName: meo_meo_caro
+    user: meo_meo_caro

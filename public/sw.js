@@ -2,7 +2,7 @@
  * Service worker: cache app shell de choi voi may khi mat mang.
  * Khong cache Socket.IO hay /health; dieu huong dung network-first.
  */
-const CACHE_NAME = 'meo-meo-caro-v4';
+const CACHE_NAME = 'meo-meo-caro-v6';
 
 const APP_SHELL = [
   './',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './css/style.css',
   './assets/cats.js',
   './js/main.js',
+  './js/api.js',
   './js/game-core.js',
   './js/ai.js',
   './js/ai-client.js',
@@ -46,8 +47,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-function isSocketOrHealth(url) {
-  return url.pathname.startsWith('/socket.io/') || url.pathname === '/health';
+function isPrivateRequest(url) {
+  return (
+    url.pathname.startsWith('/socket.io/') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/health'
+  );
 }
 
 async function networkFirst(request) {
@@ -87,7 +92,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (isSocketOrHealth(url)) return;
+  if (isPrivateRequest(url)) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request));

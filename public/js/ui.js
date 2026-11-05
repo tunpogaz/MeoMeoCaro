@@ -156,7 +156,7 @@ export function initBoard(options) {
 
 /** Dung lai luoi NxN voi vi tri grid tuong minh (khong de trinh duyet tu xep). */
 export function setBoardSize(size) {
-  const safe = Number.isInteger(size) && size >= 3 && size <= 8 ? size : 3;
+  const safe = Number.isInteger(size) && size === 3 ? size : 3;
   boardSize = safe;
   if (!boardEl) return;
 

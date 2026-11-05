@@ -160,6 +160,10 @@ export class OnlineClient {
     });
   }
 
+  roomInfo(roomId) {
+    return this.#emitAck('room:info', { roomId });
+  }
+
   joinRoom(roomId, profile) {
     return this.#emitAck('room:join', {
       roomId,
