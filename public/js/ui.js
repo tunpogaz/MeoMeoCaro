@@ -165,7 +165,6 @@ export function setBoardSize(size) {
   focusIndex = 0;
   boardEl.style.setProperty('--board-size', String(safe));
   boardEl.dataset.size = String(safe);
-  boardEl.classList.toggle('board-compact', safe >= 6);
   clearWinLine();
 
   for (let i = 0; i < safe * safe; i += 1) {
@@ -201,7 +200,7 @@ export function setBoardSize(size) {
 export function renderBoard(board, options = {}) {
   if (!boardEl) return;
   const inferred = Math.sqrt(board.length);
-  if (Number.isInteger(inferred) && inferred >= 3 && inferred <= 8 && inferred !== boardSize) {
+  if (Number.isInteger(inferred) && inferred === 3 && inferred !== boardSize) {
     setBoardSize(inferred);
   }
 

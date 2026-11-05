@@ -561,12 +561,19 @@ try {
     const C = await connect(sized.port);
     sizedSockets.push(C);
 
-    for (const size of [9, 2, 4, 5, 6, 7, 8, 3.5, '4']) {
+    for (const size of [9, 2, 4, 5, 6, 7, 8, 3.5, '4', 'Infinite', 0, -3, true, []]) {
       const res = await request(C, 'room:create', { name: 'Mèo Sai', avatar: 'gray', size });
       assert.equal(res.ok, false, `size ${size} should be rejected`);
-      assert.equal(res.code, 'invalidSize');
+      assert.equal(res.code, 'UNSUPPORTED_BOARD_SIZE');
       await sleep(120);
     }
+
+    const asString = await request(C, 'room:create', { name: 'Mèo Ba', avatar: 'gray', size: '3' });
+    assert.equal(asString.ok, true, JSON.stringify(asString));
+    assert.equal(asString.state.size, 3);
+    assert.equal(asString.state.board.length, 9);
+    const leftString = await request(C, 'room:leave', {});
+    assert.equal(leftString.ok, true);
 
     const created = await request(C, 'room:create', { name: 'Mèo Ba', avatar: 'gray' });
     assert.equal(created.ok, true, JSON.stringify(created));
@@ -748,7 +755,7 @@ try {
         size,
       });
       assert.equal(res.ok, false, `size ${size} should be rejected`);
-      assert.equal(res.code, 'invalidSize');
+      assert.equal(res.code, 'UNSUPPORTED_BOARD_SIZE');
       await sleep(130);
     }
 

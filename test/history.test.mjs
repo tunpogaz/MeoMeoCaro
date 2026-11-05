@@ -3,10 +3,12 @@
  * Uses the real Socket.IO server and an isolated SQLite file per run.
  */
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { io as ioClient } from 'socket.io-client';
@@ -444,6 +446,72 @@ try {
     assert.ok(statsA.data.stats.total >= 4);
     const statsB = await api(server, 'GET', '/api/stats', { cookie: cookieB });
     assert.equal(statsB.status, 401);
+  });
+
+  await test('legacy 4x4-8x8 rows stay in the database but are hidden from the API', async () => {
+    const me = await api(server, 'GET', '/api/auth/me', { cookie: cookieA });
+    const userId = me.data.user.id;
+    const before = await api(server, 'GET', '/api/history?limit=50', { cookie: cookieA });
+    const beforeStats = await api(server, 'GET', '/api/stats', { cookie: cookieA });
+
+    const legacyId = randomUUID();
+    const now = Date.now();
+    const db = new DatabaseSync(server.dbFile);
+    try {
+      db.prepare(
+        `INSERT INTO matches (
+           id, room_code, size, win_length, player_a_user_id, player_b_user_id,
+           player_a_name, player_b_name, player_a_avatar, player_b_avatar,
+           first_player, result, end_reason, win_line, moves, total_moves,
+           started_at, ended_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        legacyId,
+        'LEGACY',
+        '4',
+        4,
+        userId,
+        null,
+        'Mèo A',
+        'Mèo Cũ',
+        'calico',
+        'gray',
+        'A',
+        'A',
+        'win',
+        JSON.stringify([0, 1, 2, 3]),
+        JSON.stringify([{ i: 0, s: 'A' }, { i: 4, s: 'B' }, { i: 1, s: 'A' }, { i: 5, s: 'B' }]),
+        4,
+        now,
+        now
+      );
+      db.prepare(
+        `INSERT INTO user_stats (user_id, size_key, wins, losses, draws)
+         VALUES (?, '4', 1, 0, 0)`
+      ).run(userId);
+    } finally {
+      db.close();
+    }
+
+    const after = await api(server, 'GET', '/api/history?limit=50', { cookie: cookieA });
+    assert.equal(after.status, 200);
+    assert.equal(after.data.total, before.data.total);
+    assert.equal(
+      after.data.items.some((item) => item.id === legacyId),
+      false
+    );
+
+    const stats = await api(server, 'GET', '/api/stats', { cookie: cookieA });
+    assert.equal(stats.data.stats.total, beforeStats.data.stats.total);
+    assert.equal(stats.data.stats.bySize['4'], undefined);
+
+    const detail = await api(server, 'GET', `/api/history/${legacyId}`, { cookie: cookieA });
+    assert.equal(detail.status, 404);
+    assert.equal(detail.data.code, 'MATCH_NOT_FOUND');
+
+    const filtered = await api(server, 'GET', '/api/history?size=4', { cookie: cookieA });
+    assert.equal(filtered.status, 400);
+    assert.equal(filtered.data.code, 'INVALID_SIZE');
   });
 } finally {
   for (const socket of sockets) closeSocket(socket);

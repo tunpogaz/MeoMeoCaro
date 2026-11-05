@@ -35,13 +35,7 @@ function runLocal(request) {
       request.me,
       request.opponent,
       request.difficulty,
-      Math.random,
-      {
-        size: request.size,
-        winLength: request.winLength,
-        timeLimit: request.timeLimit,
-        maxDepth: request.maxDepth,
-      }
+      Math.random
     );
     return Number.isInteger(index) ? index : -1;
   } catch {
@@ -77,16 +71,12 @@ export function createAIClient() {
         const data = event.data || {};
         if (!job || data.id !== job.id) return;
 
-        if (job.request.kind === 'infinite') {
-          const move = data.move;
-          settle(
-            move && Number.isInteger(move.x) && Number.isInteger(move.y)
-              ? { x: move.x, y: move.y }
-              : null
-          );
-        } else {
-          settle(Number.isInteger(data.index) ? data.index : -1);
-        }
+        const move = data.move;
+        settle(
+          move && Number.isInteger(move.x) && Number.isInteger(move.y)
+            ? { x: move.x, y: move.y }
+            : null
+        );
       };
       worker.onerror = () => {
         broken = true;
@@ -123,7 +113,7 @@ export function createAIClient() {
         previous.resolve(cancelledValue(previous.request));
       }
 
-      if (request.kind === 'finite' && Number.isInteger(request.size) && request.size <= 3) {
+      if (request.kind === 'finite') {
         resolve(runLocal(request));
         return;
       }

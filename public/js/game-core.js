@@ -25,8 +25,6 @@ export const INFINITE = Object.freeze({
 export const INFINITE_SIZE = 'infinite';
 
 export const DEFAULT_BOARD_SIZE = 3;
-export const MIN_BOARD_SIZE = 3;
-export const MAX_BOARD_SIZE = 3;
 
 export function isValidSize(size) {
   return Number.isInteger(size) && BOARD_CONFIGS[size] !== undefined;
@@ -43,6 +41,16 @@ export function isValidBoardSize(size) {
 
 export function normalizeSize(size) {
   return isValidSize(size) ? size : DEFAULT_BOARD_SIZE;
+}
+
+/**
+ * Chuan hoa co ban tu du lieu ben ngoai (Socket.IO/HTTP):
+ * chi nhan 3, "3" va "infinite"; tra null cho moi gia tri khac.
+ */
+export function normalizeBoardSize(size) {
+  if (size === 3 || size === '3') return 3;
+  if (isInfiniteSize(size)) return INFINITE_SIZE;
+  return null;
 }
 
 export function winLengthFor(size) {

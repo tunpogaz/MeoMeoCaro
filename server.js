@@ -26,7 +26,7 @@ import {
   isBoardFull,
   isInRegion,
   isInfiniteSize,
-  isValidSize,
+  normalizeBoardSize,
   winLengthFor,
 } from './public/js/game-core.js';
 
@@ -137,7 +137,7 @@ app.use((error, _req, res, next) => {
 const ROOM_TTL = Number(process.env.ROOM_TTL_MS) || 15 * 60 * 1000; // 15 phut
 const RECONNECT_GRACE = Number(process.env.RECONNECT_GRACE_MS) || 60 * 1000; // 60 giay
 // Test co the dat TURN_MS de rut ngan moi co ban; khi chay that:
-// 3x3 - 4x4 = 30 giay, 5x5 - 8x8 = 45 giay.
+// 3x3 = 30 giay, vo cuc = 45 giay.
 const TURN_MS_OVERRIDE = Number(process.env.TURN_MS) > 0 ? Number(process.env.TURN_MS) : null;
 // Test co the ha gioi han nay de kiem tra hoa ky thuat ma khong phai danh 2000 nuoc.
 const MAX_INFINITE_MOVES =
@@ -214,8 +214,8 @@ function uniqueRoomId() {
 }
 
 function createRoom(id, size = DEFAULT_BOARD_SIZE) {
-  const infinite = isInfiniteSize(size);
-  const safeSize = infinite ? size : isValidSize(size) ? size : DEFAULT_BOARD_SIZE;
+  const safeSize = normalizeBoardSize(size) ?? DEFAULT_BOARD_SIZE;
+  const infinite = isInfiniteSize(safeSize);
   return {
     id,
     size: safeSize,
@@ -563,15 +563,11 @@ io.on('connection', (socket) => {
     }
 
     const rawSize = payload?.size;
-    if (
-      rawSize !== undefined &&
-      rawSize !== null &&
-      !isValidSize(rawSize) &&
-      !isInfiniteSize(rawSize)
-    ) {
-      return replyError(ack, 'invalidSize', 'Co ban chi ho tro 3x3 hoac vo cuc.');
+    const size =
+      rawSize === undefined || rawSize === null ? DEFAULT_BOARD_SIZE : normalizeBoardSize(rawSize);
+    if (size === null) {
+      return replyError(ack, 'UNSUPPORTED_BOARD_SIZE', 'Co ban chi ho tro 3x3 hoac vo cuc.');
     }
-    const size = rawSize === undefined || rawSize === null ? DEFAULT_BOARD_SIZE : rawSize;
 
     const { name, avatar } = identityFor(socket, payload);
     const room = createRoom(uniqueRoomId(), size);

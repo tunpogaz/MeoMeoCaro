@@ -2,7 +2,7 @@
  * Service worker: cache app shell de choi voi may khi mat mang.
  * Khong cache Socket.IO hay /health; dieu huong dung network-first.
  */
-const CACHE_NAME = 'meo-meo-caro-v6';
+const CACHE_NAME = 'meo-meo-caro-v7';
 
 const APP_SHELL = [
   './',

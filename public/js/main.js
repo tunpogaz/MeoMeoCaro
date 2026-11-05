@@ -117,6 +117,7 @@ const ERROR_KEY_BY_CODE = {
   roomFull: 'roomFull',
   invalidCode: 'invalidCode',
   invalidSize: 'invalidSize',
+  UNSUPPORTED_BOARD_SIZE: 'unsupportedBoardSize',
   invalidCoord: 'invalidCoord',
   coordOutsideRegion: 'coordOutsideRegion',
   moveLimit: 'moveLimit',

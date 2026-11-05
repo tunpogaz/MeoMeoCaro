@@ -1,5 +1,5 @@
 /**
- * Kiem thu logic ban co 3x3 - 8x8 va AI.
+ * Kiem thu logic ban co 3x3 va ban vo cuc, cung AI.
  * AI Kho 3x3 duoc kiem tra vet can: duyet moi nuoc cua doi thu va moi nuoc
  * toi uu ma AI co the chon (thay doi ngau nhien giua cac nuoc ngang diem).
  */
@@ -20,7 +20,6 @@ import {
   getResult,
   infiniteResult,
   infiniteStateFromMoves,
-  isDraw,
   isInRegion,
   isInfiniteSize,
   isValidBoardSize,
@@ -121,21 +120,16 @@ check('chuoi ngan hon luat thang khong thang', () => {
   }
 });
 
-check('chuoi khong vong tu cuoi hang sang dau hang', () => {
-  for (const size of SIZES) {
-    const need = winLengthFor(size);
-    if (size < 4) continue;
-    const board = createBoard(size);
-    const lastOfRow = size - 1;
-    board[lastOfRow - 1] = 'B';
-    board[lastOfRow] = 'B';
-    board[size] = 'B';
-    board[size + 1] = 'B';
-    if (need <= 4) {
-      assert.equal(checkWinFromMove(board, size, need, lastOfRow), null);
-      assert.equal(checkWinFromMove(board, size, need, size + 1), null);
-    }
-  }
+check('chuoi khong vong tu cuoi hang sang dau hang (3x3)', () => {
+  // Hai o cuoi hang 0 va o dau hang 1 nam lien nhau trong mang phang
+  // (chi so 1, 2, 3) nhung khong phai mot duong thang.
+  const board = createBoard(3);
+  board[1] = 'B';
+  board[2] = 'B';
+  board[3] = 'B';
+  assert.equal(checkWinFromMove(board, 3, 3, 2), null);
+  assert.equal(checkWinFromMove(board, 3, 3, 3), null);
+  assert.equal(getResult(board, 3, 3).finished, false);
 });
 
 check('chuoi dai hon luat (overline) van thang va tra ve ca chuoi', () => {
@@ -151,22 +145,11 @@ check('chuoi dai hon luat (overline) van thang va tra ve ca chuoi', () => {
   }
 });
 
-check('hoa chi khi day ban va khong ai thang (3x3 / 4x4)', () => {
+check('hoa chi khi day ban va khong ai thang (3x3)', () => {
   const almost = ['A', 'B', 'A', 'A', 'B', 'B', 'B', 'A', null];
   assert.equal(getResult(almost, 3, 3).finished, false);
   const draw = [...almost.slice(0, 8), 'B'];
   assert.equal(getResult(draw, 3, 3).draw, true);
-
-  const board4 = [
-    'A', 'A', 'B', 'B',
-    'B', 'B', 'A', 'A',
-    'A', 'A', 'B', 'B',
-    'B', 'B', 'A', 'A',
-  ];
-  assert.equal(isDraw(board4, 4, 4), true);
-  const result = getResult(board4, 4, 4);
-  assert.equal(result.draw, true);
-  assert.equal(result.winner, null);
 });
 
 check('nuoc cuoi tao thanh thang duoc uu tien hon hoa', () => {

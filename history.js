@@ -6,6 +6,8 @@ import express from 'express';
 import { newId, query, transaction } from './db.js';
 
 const VALID_RESULT_FILTERS = new Set(['win', 'loss', 'draw']);
+// Cac van 4x4 - 8x8 cua phien ban cu van nam trong DB nhung khong hien ra nua.
+const VISIBLE_SIZES = "m.size IN ('3', 'infinite')";
 
 function parseSizeFilter(raw) {
   if (raw === undefined || raw === null || raw === '') return null;
@@ -105,7 +107,7 @@ export function installHistory(app) {
       const offset = (page - 1) * limit;
       const userId = req.user.id;
 
-      const where = ['(m.player_a_user_id = ? OR m.player_b_user_id = ?)'];
+      const where = [`(m.player_a_user_id = ? OR m.player_b_user_id = ?)`, VISIBLE_SIZES];
       const params = [userId, userId];
       if (size) {
         where.push('m.size = ?');
@@ -156,7 +158,7 @@ export function installHistory(app) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         return res.status(404).json({ ok: false, code: 'MATCH_NOT_FOUND' });
       }
-      const result = await query(`${MATCH_SELECT} WHERE m.id = ?`, [id]);
+      const result = await query(`${MATCH_SELECT} WHERE m.id = ? AND ${VISIBLE_SIZES}`, [id]);
       const row = result.rows[0];
       const userId = req.user.id;
       if (
@@ -175,7 +177,8 @@ export function installHistory(app) {
   router.get('/stats', requireUser, async (req, res) => {
     try {
       const result = await query(
-        `SELECT size_key, wins, losses, draws FROM user_stats WHERE user_id = ?`,
+        `SELECT size_key, wins, losses, draws FROM user_stats
+          WHERE user_id = ? AND size_key IN ('3', 'infinite')`,
         [req.user.id]
       );
       const bySize = {};
