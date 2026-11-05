@@ -2,7 +2,8 @@
  * Bo dieu khien chinh: dieu huong man hinh, choi voi may, 2 nguoi cung may,
  * online qua ma phong, cai dat, am thanh va PWA.
  */
-import { applyI18n, setLang, t } from './i18n.js';
+import { applyI18n, getLang, setLang, t } from './i18n.js';
+import { isRetriableError, resolveAccountUser, retryWhileWaking } from './wake.js';
 import {
   loadProfile,
   saveProfile,
@@ -83,6 +84,9 @@ import { api } from './api.js';
 const SCREENS = [
   'home',
   'auth',
+  'forgot',
+  'reset',
+  'verify',
   'profile',
   'history',
   'stats',
@@ -141,6 +145,14 @@ const ERROR_KEY_BY_CODE = {
   NETWORK: 'networkError',
   MATCH_NOT_FOUND: 'matchNotFound',
   INVALID_RESULT_FILTER: 'invalidResultFilter',
+  EMAIL_INVALID: 'emailInvalid',
+  EMAIL_REQUIRED: 'emailRequired',
+  EMAIL_TAKEN: 'emailTaken',
+  RESET_TOKEN_INVALID: 'resetTokenInvalid',
+  RESET_TOKEN_EXPIRED: 'resetTokenExpired',
+  VERIFY_TOKEN_INVALID: 'verifyTokenInvalid',
+  MAIL_DISABLED: 'mailDisabled',
+  MAIL_SEND_FAILED: 'mailSendFailed',
   SERVER_ERROR: 'serverError',
 };
 
@@ -155,7 +167,12 @@ const state = {
   scoreViewSize: 3,
   game: null,
   account: { user: null, loading: true },
+  config: { mailEnabled: false, loaded: false },
   auth: { tab: 'login', avatar: 'orange', busy: false },
+  forgot: { countdown: 0, timer: null, email: '' },
+  reset: { token: '', countdown: 0, timer: null },
+  verify: { token: '' },
+  email: { countdown: 0, timer: null },
   pendingRoom: null,
   pendingInvite: null,
   history: { items: [], page: 0, hasMore: false, loading: false, size: '', result: '' },
@@ -388,6 +405,7 @@ function openAuth(tab = 'login') {
   showAuthError('login', '');
   showAuthError('register', '');
   refreshAuthInviteNote();
+  applyMailVisibility();
   state.auth.avatar = currentProfile().avatar;
   renderAuthAvatars();
   $('login-form').reset();
@@ -438,27 +456,162 @@ function renderAccountUI() {
   }
   syncNameInput();
   renderLobbyProfile();
+  renderProfileEmail();
+  renderEmailBanner();
+  applyMailVisibility();
 }
+
+function applyMailVisibility() {
+  const enabled = state.config.mailEnabled === true;
+  const forgot = $('forgot-password-link');
+  if (forgot) forgot.hidden = !enabled;
+  const registerEmail = $('register-email');
+  if (registerEmail) registerEmail.required = enabled;
+  const help = $('register-email-help');
+  if (help) help.textContent = t(enabled ? 'emailRegisterHelp' : 'emailRegisterOptional');
+  const form = $('email-form');
+  if (form) form.hidden = !enabled;
+  const note = $('mail-disabled-note');
+  if (note) note.hidden = enabled;
+  if (!enabled) {
+    const resend = $('email-resend');
+    if (resend) resend.hidden = true;
+  }
+}
+
+function emailBannerSnoozed() {
+  try {
+    const until = Number(window.localStorage.getItem(BANNER_SNOOZE_KEY) || 0);
+    return Number.isFinite(until) && until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function renderEmailBanner() {
+  const banner = $('email-banner');
+  if (!banner) return;
+  const user = state.account.user;
+  const show = Boolean(
+    state.config.mailEnabled && user && !user.emailVerified && !emailBannerSnoozed()
+  );
+  banner.hidden = !show;
+  if (!show) return;
+  const text = $('email-banner-text');
+  if (text) {
+    text.textContent = t(user.hasPendingEmail ? 'emailBannerPending' : 'emailBanner');
+  }
+}
+
+function renderProfileEmail() {
+  const user = state.account.user;
+  if (!user) return;
+  const current = $('profile-email');
+  const badge = $('profile-email-badge');
+  const pending = $('profile-email-pending');
+  const resend = $('email-resend');
+  if (current) current.textContent = user.emailMasked || t('noEmail');
+  if (badge) {
+    if (user.emailVerified) {
+      badge.hidden = false;
+      badge.textContent = t('emailVerified');
+      badge.className = 'email-badge verified';
+    } else if (user.emailMasked) {
+      badge.hidden = false;
+      badge.textContent = t('emailUnverified');
+      badge.className = 'email-badge pending';
+    } else {
+      badge.hidden = true;
+      badge.textContent = '';
+    }
+  }
+  if (pending) {
+    pending.hidden = !user.hasPendingEmail;
+    pending.textContent = user.hasPendingEmail
+      ? t('pendingVerify', { email: user.pendingEmailMasked || user.emailMasked || '' })
+      : '';
+  }
+  if (resend) resend.hidden = !(state.config.mailEnabled && user.hasPendingEmail);
+}
+
+function startCountdown(target, seconds, button, idleKey) {
+  const stateRef = target;
+  const total = Math.max(1, Math.round(Number(seconds) || 60));
+  stateRef.countdown = total;
+  window.clearInterval(stateRef.timer);
+  const paint = () => {
+    if (!button) return;
+    if (stateRef.countdown > 0) {
+      button.hidden = false;
+      button.disabled = true;
+      button.textContent = t('resendIn', { s: stateRef.countdown });
+    } else {
+      button.disabled = false;
+      button.textContent = t(idleKey);
+    }
+  };
+  paint();
+  stateRef.timer = window.setInterval(() => {
+    stateRef.countdown -= 1;
+    if (stateRef.countdown <= 0) {
+      window.clearInterval(stateRef.timer);
+      stateRef.timer = null;
+      stateRef.countdown = 0;
+    }
+    paint();
+  }, 1000);
+}
+
+const BANNER_SNOOZE_KEY = 'mmc.emailBannerSnooze';
 
 async function refreshAccount() {
   state.account.loading = true;
   try {
-    const response = await api.me();
-    state.account.user = response?.user || null;
-  } catch {
-    state.account.user = null;
+    const response = await retryWhileWaking(() => api.me(), {
+      onWait: () => setBanner(t('wakingServer'), 'info'),
+    });
+    state.account.user = resolveAccountUser(state.account.user, response, null);
+    setBanner('');
+  } catch (error) {
+    // Loi mang/timeout: giu nguyen trang thai dang nhap hien co.
+    // Chi chuyen thanh khach khi server noi ro khong con phien (401/user:null).
+    const next = resolveAccountUser(state.account.user, null, error);
+    if (next === null && state.account.user) {
+      state.account.user = null;
+    } else if (state.account.user && isRetriableError(error)) {
+      setBanner(t('serverAsleep'), 'warn');
+    }
   }
   state.account.loading = false;
   renderAccountUI();
   return state.account.user;
 }
 
-function handleAuthSuccess(user) {
+async function refreshConfig() {
+  try {
+    const response = await retryWhileWaking(() => api.config(), {
+      onWait: () => setBanner(t('wakingServer'), 'info'),
+    });
+    state.config.mailEnabled = response?.mailEnabled === true;
+  } catch {
+    state.config.mailEnabled = false;
+  }
+  state.config.loaded = true;
+  applyMailVisibility();
+  return state.config.mailEnabled;
+}
+
+function handleAuthSuccess(user, options = {}) {
   state.account.user = user;
   state.stats = null;
   renderAccountUI();
   audio.play('join');
   toast(t('welcomeUser', { name: user.displayName }), 'success', 2200);
+  if (options.mailSent) {
+    window.setTimeout(() => {
+      toast(t('verifyMailSent'), 'info', 6000);
+    }, 700);
+  }
   const pending = state.pendingRoom;
   if (pending) {
     state.pendingRoom = null;
@@ -500,6 +653,11 @@ function openProfile() {
   $('current-password').value = '';
   $('new-password').value = '';
   $('delete-password').value = '';
+  $('email-new').value = '';
+  $('email-current-password').value = '';
+  setFormMessage('email-error', '');
+  setFormMessage('email-success', '');
+  renderProfileEmail();
   renderProfileAvatars(user.avatar);
   showScreen('profile');
   focusElement($('profile-name-input'));
@@ -909,6 +1067,7 @@ async function registerFlow(event) {
   if (state.auth.busy) return;
   const username = $('register-username').value.trim();
   const displayName = $('register-display-name').value.trim();
+  const email = $('register-email').value.trim();
   const password = $('register-password').value;
   showAuthError('register', '');
   setAuthBusy(true);
@@ -916,13 +1075,15 @@ async function registerFlow(event) {
     const response = await api.register({
       username,
       displayName,
+      email,
       password,
       avatar: state.auth.avatar,
       remember: $('register-remember').checked,
+      lang: getLang(),
     });
     $('register-password').value = '';
     updatePasswordStrength();
-    handleAuthSuccess(response.user);
+    handleAuthSuccess(response.user, { mailSent: response.mailSent === true });
   } catch (error) {
     showAuthError('register', apiErrorMessage(error));
     audio.play('error');
@@ -1011,6 +1172,261 @@ function togglePasswordVisibility(button) {
   input.type = show ? 'text' : 'password';
   button.setAttribute('aria-pressed', String(show));
   button.setAttribute('aria-label', t('showPassword'));
+}
+
+// ---------------------------------------------------------------------------
+// Quen / dat lai mat khau va xac thuc email
+// ---------------------------------------------------------------------------
+function openForgot() {
+  setFormMessage('forgot-error', '');
+  setFormMessage('forgot-status', '');
+  $('forgot-form').reset();
+  state.forgot.email = '';
+  state.forgot.countdown = 0;
+  if (state.forgot.timer) {
+    window.clearInterval(state.forgot.timer);
+    state.forgot.timer = null;
+  }
+  $('forgot-resend').hidden = true;
+  $('forgot-resend').disabled = false;
+  $('forgot-resend').textContent = t('sendAgain');
+  showScreen('forgot');
+  focusElement($('forgot-email'));
+}
+
+async function forgotFlow(event) {
+  event.preventDefault();
+  const email = $('forgot-email').value.trim();
+  state.forgot.email = email;
+  setFormMessage('forgot-error', '');
+  setFormMessage('forgot-status', '');
+  $('forgot-submit').disabled = true;
+  try {
+    await api.forgotPassword({ email, lang: getLang() });
+    setFormMessage('forgot-status', t('forgotGeneric'), 'success');
+    startCountdown(state.forgot, 60, $('forgot-resend'), 'sendAgain');
+  } catch (error) {
+    if (error.code === 'RATE_LIMITED') {
+      setFormMessage('forgot-status', t('forgotGeneric'), 'success');
+      startCountdown(state.forgot, error.retryAfter || 60, $('forgot-resend'), 'sendAgain');
+    } else {
+      setFormMessage('forgot-error', apiErrorMessage(error));
+    }
+  } finally {
+    $('forgot-submit').disabled = false;
+  }
+}
+
+function tokenLooksValid(token) {
+  return typeof token === 'string' && /^[A-Za-z0-9_-]{20,200}$/.test(token);
+}
+
+function showResetState(kind) {
+  $('reset-loading').hidden = kind !== 'loading';
+  $('reset-loading').textContent = kind === 'loading' ? t('resetChecking') : '';
+  $('reset-invalid').hidden = kind !== 'invalid';
+  $('reset-offline').hidden = kind !== 'offline';
+  $('reset-form').hidden = kind !== 'form';
+}
+
+async function openResetScreen(token) {
+  state.reset.token = typeof token === 'string' ? token : '';
+  setFormMessage('reset-error', '');
+  $('reset-password').value = '';
+  $('reset-confirm').value = '';
+  updateResetStrength();
+  showScreen('reset');
+  showResetState('loading');
+  if (!tokenLooksValid(state.reset.token)) {
+    showResetState('invalid');
+    return;
+  }
+  try {
+    const response = await retryWhileWaking(
+      () => api.resetCheck({ token: state.reset.token }),
+      { onWait: () => { $('reset-loading').textContent = t('wakingServer'); } }
+    );
+    if (response?.valid) {
+      showResetState('form');
+      focusElement($('reset-password'));
+    } else {
+      showResetState('invalid');
+    }
+  } catch (error) {
+    showResetState(isRetriableError(error) ? 'offline' : 'invalid');
+  }
+}
+
+async function resetFlow(event) {
+  event.preventDefault();
+  setFormMessage('reset-error', '');
+  const next = $('reset-password').value;
+  const confirm = $('reset-confirm').value;
+  if (next !== confirm) {
+    setFormMessage('reset-error', t('passwordMismatch'));
+    return;
+  }
+  $('reset-submit').disabled = true;
+  try {
+    await retryWhileWaking(() =>
+      api.resetPassword({
+        token: state.reset.token,
+        newPassword: next,
+        lang: getLang(),
+      })
+    );
+    $('reset-password').value = '';
+    $('reset-confirm').value = '';
+    openAuth('login');
+    setFormMessage('login-error', t('resetSuccess'), 'success');
+  } catch (error) {
+    if (
+      error.code === 'RESET_TOKEN_INVALID' ||
+      error.code === 'RESET_TOKEN_EXPIRED'
+    ) {
+      showResetState('invalid');
+    } else {
+      setFormMessage('reset-error', apiErrorMessage(error));
+    }
+  } finally {
+    $('reset-submit').disabled = false;
+  }
+}
+
+async function openVerifyScreen(token) {
+  state.verify.token = typeof token === 'string' ? token : '';
+  $('verify-status').hidden = true;
+  $('verify-error').hidden = true;
+  $('verify-retry').hidden = true;
+  $('verify-loading').hidden = false;
+  $('verify-loading').textContent = t('verifyChecking');
+  showScreen('verify');
+  if (!tokenLooksValid(state.verify.token)) {
+    $('verify-loading').hidden = true;
+    $('verify-error').hidden = false;
+    $('verify-error').textContent = t('verifyInvalid');
+    return;
+  }
+  try {
+    const response = await retryWhileWaking(
+      () => api.verifyEmail({ token: state.verify.token }),
+      { onWait: () => { $('verify-loading').textContent = t('wakingServer'); } }
+    );
+    $('verify-loading').hidden = true;
+    $('verify-status').hidden = false;
+    $('verify-status').textContent = response?.emailMasked
+      ? t('verifySuccessEmail', { email: response.emailMasked })
+      : t('verifySuccess');
+    void refreshAccount();
+  } catch (error) {
+    $('verify-loading').hidden = true;
+    $('verify-error').hidden = false;
+    $('verify-error').textContent = apiErrorMessage(error);
+    if (isRetriableError(error)) $('verify-retry').hidden = false;
+  }
+}
+
+async function saveEmailFlow(event) {
+  event.preventDefault();
+  const user = state.account.user;
+  if (!user) return;
+  setFormMessage('email-error', '');
+  setFormMessage('email-success', '');
+  $('email-submit').disabled = true;
+  try {
+    const response = await api.setEmail({
+      email: $('email-new').value.trim(),
+      currentPassword: $('email-current-password').value,
+      lang: getLang(),
+    });
+    state.account.user = response.user;
+    $('email-new').value = '';
+    $('email-current-password').value = '';
+    renderAccountUI();
+    if (response.mailSent === false) {
+      setFormMessage('email-error', t('mailSendFailed'));
+    } else {
+      setFormMessage(
+        'email-success',
+        t(response.unchanged ? 'emailUnchanged' : 'emailChangeSent'),
+        'success'
+      );
+    }
+  } catch (error) {
+    setFormMessage('email-error', apiErrorMessage(error));
+  } finally {
+    $('email-submit').disabled = false;
+  }
+}
+
+async function resendEmailFlow() {
+  setFormMessage('email-error', '');
+  setFormMessage('email-success', '');
+  $('email-resend').disabled = true;
+  try {
+    const response = await api.resendEmail({ lang: getLang() });
+    state.account.user = response.user;
+    renderAccountUI();
+    if (response.mailSent === false) {
+      setFormMessage('email-error', t('mailSendFailed'));
+      $('email-resend').disabled = false;
+    } else {
+      setFormMessage('email-success', t('verifyMailSent'), 'success');
+      startCountdown(state.email, 60, $('email-resend'), 'resendVerification');
+    }
+  } catch (error) {
+    if (error.code === 'RATE_LIMITED') {
+      startCountdown(
+        state.email,
+        error.retryAfter || 60,
+        $('email-resend'),
+        'resendVerification'
+      );
+    } else {
+      setFormMessage('email-error', apiErrorMessage(error));
+      $('email-resend').disabled = false;
+    }
+  }
+}
+
+function readActionHash() {
+  const raw = String(window.location.hash || '').replace(/^#/, '');
+  if (!raw) return null;
+  const eq = raw.indexOf('=');
+  if (eq < 0) return null;
+  const key = raw.slice(0, eq);
+  if (key !== 'reset' && key !== 'verify') return null;
+  let token = raw.slice(eq + 1);
+  try {
+    token = decodeURIComponent(token);
+  } catch {
+    /* giu nguyen neu ma hoa sai */
+  }
+  return { key, token };
+}
+
+function stripActionHash() {
+  try {
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}`
+    );
+  } catch {
+    /* trinh duyet cu: bo qua */
+  }
+}
+
+function updateResetStrength() {
+  const input = $('reset-password');
+  const fill = $('reset-strength-fill');
+  const text = $('reset-strength-text');
+  if (!input || !fill || !text) return;
+  const result = passwordStrength(input.value);
+  fill.className = `strength-fill ${result.className}`;
+  fill.style.width = `${result.score * 33.33}%`;
+  text.textContent = result.label;
+  text.className = `strength-text ${result.className}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2985,6 +3401,11 @@ function applyLanguage(lang) {
   renderAuthAvatars();
   updatePasswordStrength();
   refreshAuthInviteNote();
+  applyMailVisibility();
+  renderEmailBanner();
+  renderProfileEmail();
+  updatePasswordStrength();
+  updateResetStrength();
   if (state.account.user) renderAccountUI();
   else syncNameInput();
 
@@ -3232,6 +3653,33 @@ function setupAccountEvents() {
   $('login-form').addEventListener('submit', loginFlow);
   $('register-form').addEventListener('submit', registerFlow);
   $('btn-auth-guest').addEventListener('click', guestFlow);
+  $('forgot-password-link').addEventListener('click', openForgot);
+  $('forgot-back').addEventListener('click', () => openAuth('login'));
+  $('forgot-login').addEventListener('click', () => openAuth('login'));
+  $('forgot-form').addEventListener('submit', forgotFlow);
+  $('forgot-resend').addEventListener('click', () => $('forgot-form').requestSubmit());
+  $('reset-back').addEventListener('click', () => goHome());
+  $('reset-request-new').addEventListener('click', openForgot);
+  $('reset-retry').addEventListener('click', () => openResetScreen(state.reset.token));
+  $('reset-form').addEventListener('submit', resetFlow);
+  $('reset-password').addEventListener('input', updateResetStrength);
+  $('verify-back').addEventListener('click', () => goHome());
+  $('verify-home').addEventListener('click', () => goHome());
+  $('verify-retry').addEventListener('click', () => openVerifyScreen(state.verify.token));
+  $('email-form').addEventListener('submit', saveEmailFlow);
+  $('email-resend').addEventListener('click', resendEmailFlow);
+  $('email-banner-action').addEventListener('click', () => openProfile());
+  $('email-banner-dismiss').addEventListener('click', () => {
+    try {
+      window.localStorage.setItem(
+        BANNER_SNOOZE_KEY,
+        String(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      );
+    } catch {
+      /* bo qua neu trinh duyet chan localStorage */
+    }
+    renderEmailBanner();
+  });
 
   $('profile-back').addEventListener('click', () => goHome());
   $('profile-save').addEventListener('click', saveProfileFlow);
@@ -3490,6 +3938,18 @@ function registerServiceWorker() {
 // Khoi dong
 // ---------------------------------------------------------------------------
 async function routeInitial() {
+  const action = readActionHash();
+  if (action) {
+    // Token chi nam trong fragment: doc xong xoa ngay khoi thanh dia chi.
+    stripActionHash();
+    if (action.key === 'reset') {
+      await openResetScreen(action.token);
+    } else {
+      await openVerifyScreen(action.token);
+    }
+    return;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const rawRoom = params.get('room');
   if (rawRoom !== null && rawRoom.trim() !== '') {
@@ -3580,7 +4040,7 @@ function init() {
   setupNetworkWatchers();
   registerServiceWorker();
 
-  refreshAccount().finally(routeInitial);
+  Promise.all([refreshAccount(), refreshConfig()]).finally(routeInitial);
 }
 
 init();

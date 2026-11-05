@@ -49,12 +49,23 @@ async function request(path, { method = 'GET', body, timeout = 12000 } = {}) {
 }
 
 export const api = {
+  config: () => request('/api/config'),
   me: () => request('/api/auth/me'),
   register: (payload) => request('/api/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
   logout: () => request('/api/auth/logout', { method: 'POST', body: {} }),
+  forgotPassword: (payload) =>
+    request('/api/auth/forgot-password', { method: 'POST', body: payload }),
+  resetCheck: (payload) =>
+    request('/api/auth/reset-password/check', { method: 'POST', body: payload }),
+  resetPassword: (payload) =>
+    request('/api/auth/reset-password', { method: 'POST', body: payload }),
+  verifyEmail: (payload) =>
+    request('/api/auth/verify-email', { method: 'POST', body: payload }),
   updateProfile: (payload) => request('/api/me', { method: 'PATCH', body: payload }),
   changePassword: (payload) => request('/api/me/password', { method: 'POST', body: payload }),
+  setEmail: (payload) => request('/api/me/email', { method: 'POST', body: payload }),
+  resendEmail: (payload) => request('/api/me/email/resend', { method: 'POST', body: payload }),
   deleteAccount: (payload) => request('/api/me', { method: 'DELETE', body: payload }),
   history: (params = {}) => {
     const search = new URLSearchParams();

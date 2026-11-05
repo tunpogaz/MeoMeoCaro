@@ -14,6 +14,7 @@ import { Server } from 'socket.io';
 import { closeDatabase, databaseKind, migrate, query } from './db.js';
 import { installAuth, userFromCookieHeader } from './auth.js';
 import { installHistory, saveMatchRecord } from './history.js';
+import { installTestMailRoutes, mailEnabled, mailProvider, mailStartupWarning } from './mailer.js';
 import {
   DEFAULT_BOARD_SIZE,
   INFINITE,
@@ -71,6 +72,7 @@ if (TRUST_PROXY) {
 app.use(
   helmet({
     crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'no-referrer' },
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
@@ -108,6 +110,7 @@ app.get('/health', (_req, res) => {
 app.use('/api', express.json({ limit: '10kb' }));
 installAuth(app);
 installHistory(app);
+installTestMailRoutes(app);
 
 // Fallback 404 gon gang (khong lo thong tin he thong)
 app.use((_req, res) => {
@@ -908,12 +911,25 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 await migrate();
 log(`database: ${databaseKind()}`);
+log(`mail: ${mailEnabled ? mailProvider : 'disabled'}`);
+const mailWarning = mailStartupWarning();
+if (mailWarning) log(`mail warning: ${mailWarning}`);
 
 setInterval(async () => {
   try {
-    await query('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
+    const now = Date.now();
+    const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+    await query('DELETE FROM sessions WHERE expires_at < ?', [now]);
+    await query(
+      'DELETE FROM password_resets WHERE expires_at < ? OR (used_at IS NOT NULL AND used_at < ?)',
+      [now, cutoff]
+    );
+    await query(
+      'DELETE FROM email_verifications WHERE expires_at < ? OR (used_at IS NOT NULL AND used_at < ?)',
+      [now, cutoff]
+    );
   } catch (error) {
-    console.error('[mmc] session cleanup failed', error.message);
+    console.error('[mmc] session/token cleanup failed', error.message);
   }
 }, 60 * 60 * 1000).unref?.();
 

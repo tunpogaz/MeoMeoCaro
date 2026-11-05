@@ -8,11 +8,14 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
-    "test": "node test/ai.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs",
+    "admin:reset-password": "node scripts/admin-reset-password.js",
+    "test": "node test/ai.test.mjs && node test/wake.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs && node test/password-reset.test.mjs",
     "test:ai": "node test/ai.test.mjs",
+    "test:wake": "node test/wake.test.mjs",
     "test:server": "node test/server.test.mjs",
     "test:auth": "node test/auth.test.mjs",
-    "test:history": "node test/history.test.mjs"
+    "test:history": "node test/history.test.mjs",
+    "test:password-reset": "node test/password-reset.test.mjs"
   },
   "engines": {
     "node": ">=22.13"
@@ -30,6 +33,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^7.5.1",
     "helmet": "^7.1.0",
+    "nodemailer": "^6.10.1",
     "pg": "^8.23.1",
     "socket.io": "^4.7.5"
   },

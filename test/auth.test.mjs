@@ -382,10 +382,14 @@ await test('migrations are idempotent and run from the CLI', async () => {
   const migrations = db.prepare('SELECT COUNT(*) AS total FROM schema_migrations').get();
   const users = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
   const matches = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='matches'").get();
+  const verifications = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='email_verifications'").get();
+  const resets = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='password_resets'").get();
   db.close();
-  assert.equal(migrations.total, 1);
+  assert.equal(migrations.total, 2);
   assert.ok(users);
   assert.ok(matches);
+  assert.ok(verifications);
+  assert.ok(resets);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

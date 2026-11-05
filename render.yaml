@@ -19,6 +19,30 @@ services:
           property: connectionString
       - key: PGSSL
         value: "true"
+      # Public URL of the service: email links are built from this value only.
+      # Replace with the real https Render URL (or a custom domain).
+      - key: PUBLIC_URL
+        sync: false
+      - key: MAIL_PROVIDER
+        value: console
+      - key: MAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESET_TOKEN_MINUTES
+        value: "30"
+      - key: VERIFY_TOKEN_HOURS
+        value: "24"
 
 databases:
   - name: meo-meo-caro-db

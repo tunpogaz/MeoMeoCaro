@@ -8,6 +8,17 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { newId, query, transaction, isUniqueViolation } from './db.js';
+import {
+  actionLink,
+  emailChangeNoticeMail,
+  mailEnabled,
+  passwordChangedMail,
+  passwordResetMail,
+  resetTokenMinutes,
+  sendMail,
+  verificationMail,
+  verifyTokenHours,
+} from './mailer.js';
 
 const scrypt = promisify(crypto.scrypt);
 const SCRYPT = { N: 32768, r: 8, p: 1, keylen: 64, maxmem: 64 * 1024 * 1024 };
@@ -36,6 +47,13 @@ const COMMON_PASSWORDS = new Set([
 ]);
 
 export const AVATARS = new Set(['orange', 'gray', 'calico', 'black', 'cream', 'tabby']);
+const DELETED_PLAYER_NAME = 'Người chơi đã xóa';
+const RESET_TTL_MS = resetTokenMinutes * 60 * 1000;
+const VERIFY_TTL_MS = verifyTokenHours * 60 * 60 * 1000;
+const EMAIL_MAX_LENGTH = 254;
+const FORGOT_EMAIL_MAX = 3;
+const FORGOT_EMAIL_WINDOW_MS = 60 * 60 * 1000;
+const forgotEmailHits = new Map();
 
 const DUMMY_SALT = Buffer.from('9e1c9c12f1f04a9d8f6b1f4a0f1f8d2c', 'hex');
 
@@ -92,6 +110,37 @@ export function normalizeUsername(raw) {
   return String(raw || '').trim().toLowerCase();
 }
 
+/**
+ * Chuan hoa va kiem tra email: chu thuong, <=254 ky tu, dung mot @,
+ * ten mien co dau cham, khong co khoang trang/ky tu dieu khien/xuong dong.
+ * Tra ve null neu khong hop le.
+ */
+export function normalizeEmail(raw) {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim().toLowerCase();
+  if (!value || value.length > EMAIL_MAX_LENGTH) return null;
+  if (/[\u0000-\u001F\u007F\s]/.test(value)) return null;
+  if ((value.match(/@/g) || []).length !== 1) return null;
+  const [local, domain] = value.split('@');
+  if (!local || local.length > 64) return null;
+  if (!domain || domain.length > 253 || !domain.includes('.')) return null;
+  if (domain.startsWith('.') || domain.endsWith('.') || domain.includes('..')) return null;
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)) return null;
+  if (!/^[a-z0-9.-]+$/.test(domain)) return null;
+  const tld = domain.split('.').pop();
+  if (!tld || tld.length < 2) return null;
+  return value;
+}
+
+function maskEmail(email) {
+  const value = String(email || '');
+  const at = value.indexOf('@');
+  if (at < 1) return null;
+  const local = Array.from(value.slice(0, at));
+  const head = local[0] || '*';
+  return `${head}***${value.slice(at)}`;
+}
+
 function validUsername(username) {
   return /^[a-z0-9_]{3,20}$/.test(username);
 }
@@ -126,8 +175,104 @@ function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
 
+function newToken() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function safeToken(raw) {
+  if (typeof raw !== 'string') return null;
+  return /^[A-Za-z0-9_-]{20,200}$/.test(raw) ? raw : null;
+}
+
+function langOf(raw) {
+  return raw === 'en' ? 'en' : 'vi';
+}
+
+function mailTime(lang) {
+  try {
+    return new Date().toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+function queueMail(message) {
+  // sendMail khong bao gio nem; chay nen de thoi gian phan hoi khong lo thong tin.
+  void sendMail(message);
+}
+
+export async function issueResetToken(userId) {
+  const raw = newToken();
+  const now = Date.now();
+  await transaction(async (tx) => {
+    await tx.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [userId]);
+    await tx.query(
+      `INSERT INTO password_resets (id, user_id, token_hash, created_at, expires_at, used_at)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+      [newId(), userId, sha256(raw), now, now + RESET_TTL_MS]
+    );
+  });
+  return raw;
+}
+
+async function issueVerificationToken(userId, email) {
+  const raw = newToken();
+  const now = Date.now();
+  await transaction(async (tx) => {
+    await tx.query('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL', [userId]);
+    await tx.query(
+      `INSERT INTO email_verifications (id, user_id, email, token_hash, created_at, expires_at, used_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      [newId(), userId, email, sha256(raw), now, now + VERIFY_TTL_MS]
+    );
+  });
+  return raw;
+}
+
+async function queueVerificationMail({ userId, email, username, lang }) {
+  const token = await issueVerificationToken(userId, email);
+  const link = actionLink('verify', token);
+  if (!link) return false;
+  const mail = verificationMail({ lang, link, username, hours: verifyTokenHours });
+  queueMail({ ...mail, to: email });
+  return true;
+}
+
+function allowForgotEmail(email) {
+  if (RATE_LIMIT_DISABLED) return true;
+  const now = Date.now();
+  const hits = (forgotEmailHits.get(email) || []).filter((at) => now - at < FORGOT_EMAIL_WINDOW_MS);
+  if (hits.length >= FORGOT_EMAIL_MAX) {
+    forgotEmailHits.set(email, hits);
+    return false;
+  }
+  hits.push(now);
+  forgotEmailHits.set(email, hits);
+  if (forgotEmailHits.size > 5000) {
+    for (const [key, times] of forgotEmailHits) {
+      if (!times.some((at) => now - at < FORGOT_EMAIL_WINDOW_MS)) forgotEmailHits.delete(key);
+    }
+  }
+  return true;
+}
+
+async function userEmailRow(userId) {
+  const result = await query(
+    `SELECT id, username, email, email_verified_at, pending_email
+       FROM users WHERE id = ? AND deleted_at IS NULL`,
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 function publicUser(row) {
   if (!row) return null;
+  const verifiedEmail = row.email || null;
+  const shownEmail = verifiedEmail || row.pending_email || null;
   return {
     id: row.id,
     username: row.username,
@@ -135,6 +280,10 @@ function publicUser(row) {
     avatar: row.avatar,
     createdAt: Number(row.created_at),
     lastLoginAt: row.last_login_at === null ? null : Number(row.last_login_at),
+    emailMasked: shownEmail ? maskEmail(shownEmail) : null,
+    pendingEmailMasked: row.pending_email ? maskEmail(row.pending_email) : null,
+    emailVerified: Boolean(verifiedEmail && row.email_verified_at !== null),
+    hasPendingEmail: Boolean(row.pending_email),
   };
 }
 
@@ -177,7 +326,8 @@ export async function resolveSessionUser(rawToken) {
   const tokenHash = sha256(rawToken);
   const result = await query(
     `SELECT s.expires_at, s.last_seen_at, u.id, u.username, u.display_name, u.avatar,
-            u.created_at, u.last_login_at, u.deleted_at
+            u.created_at, u.last_login_at, u.deleted_at,
+            u.email, u.email_verified_at, u.pending_email
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ?`,
     [tokenHash]
@@ -216,6 +366,12 @@ export function installAuth(app) {
   });
 
   const router = express.Router();
+
+  // API tai khoan khong duoc cache (link/token chi nam trong fragment phia client).
+  router.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   // Chong CSRF: moi thay doi du lieu phai la JSON va Origin/Host cung origin.
   router.use((req, res, next) => {
@@ -278,6 +434,16 @@ export function installAuth(app) {
     'login'
   );
   const loginIpLimiter = limiter(50, 15 * 60 * 1000, (req) => req.ip, 'login');
+  const forgotIpLimiter = limiter(5, 60 * 60 * 1000, (req) => req.ip, 'forgot');
+  const resetIpLimiter = limiter(10, 15 * 60 * 1000, (req) => req.ip, 'reset');
+  const resetCheckLimiter = limiter(10, 15 * 60 * 1000, (req) => req.ip, 'reset-check');
+  const verifyIpLimiter = limiter(20, 15 * 60 * 1000, (req) => req.ip, 'verify-email');
+  const resendLimiter = limiter(3, 60 * 60 * 1000, (req) => req.user?.id || req.ip, 'email-resend');
+  const changeEmailLimiter = limiter(5, 60 * 60 * 1000, (req) => req.user?.id || req.ip, 'email-change');
+
+  router.get('/config', (_req, res) => {
+    res.json({ ok: true, mailEnabled });
+  });
 
   router.post('/auth/register', registerLimiter, async (req, res) => {
     try {
@@ -293,6 +459,16 @@ export function installAuth(app) {
       if (rawAvatar !== undefined && !AVATARS.has(rawAvatar)) {
         return res.status(400).json({ ok: false, code: 'INVALID_AVATAR' });
       }
+      const rawEmail = req.body?.email;
+      const hasEmailInput =
+        rawEmail !== undefined && rawEmail !== null && String(rawEmail).trim() !== '';
+      const email = hasEmailInput ? normalizeEmail(rawEmail) : null;
+      if (hasEmailInput && !email) {
+        return res.status(400).json({ ok: false, code: 'EMAIL_INVALID' });
+      }
+      if (!email && mailEnabled) {
+        return res.status(400).json({ ok: false, code: 'EMAIL_REQUIRED' });
+      }
       const avatar = AVATARS.has(rawAvatar) ? rawAvatar : 'orange';
       const displayName =
         sanitizeDisplayName(req.body?.displayName) ||
@@ -303,9 +479,10 @@ export function installAuth(app) {
       const hash = await hashPassword(req.body.password);
       try {
         await query(
-          `INSERT INTO users (id, username, display_name, password_hash, avatar, created_at, last_login_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [id, username, displayName, hash, avatar, now, now]
+          `INSERT INTO users (id, username, display_name, password_hash, avatar, created_at,
+                              last_login_at, pending_email)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, username, displayName, hash, avatar, now, now, email]
         );
       } catch (error) {
         if (isUniqueViolation(error)) {
@@ -313,10 +490,31 @@ export function installAuth(app) {
         }
         throw error;
       }
+      let mailSent = false;
+      if (email && mailEnabled) {
+        try {
+          mailSent = await queueVerificationMail({
+            userId: id,
+            email,
+            username,
+            lang: langOf(req.body?.lang),
+          });
+        } catch (error) {
+          console.error('[mmc] verification mail failed', error.code || 'error');
+        }
+      }
       await createSession(res, id, req.body?.remember, req);
+      const created = await query(
+        `SELECT id, username, display_name, avatar, created_at, last_login_at,
+                email, email_verified_at, pending_email
+           FROM users WHERE id = ?`,
+        [id]
+      );
       return res.status(201).json({
         ok: true,
-        user: { id, username, displayName, avatar, createdAt: now, lastLoginAt: now },
+        user: publicUser(created.rows[0]),
+        mailSent,
+        mailEnabled,
       });
     } catch (error) {
       console.error('[mmc] register failed', error.message);
@@ -329,7 +527,8 @@ export function installAuth(app) {
       const username = normalizeUsername(req.body?.username);
       const password = typeof req.body?.password === 'string' ? req.body.password : '';
       const result = await query(
-        `SELECT id, username, display_name, password_hash, avatar, created_at, last_login_at, deleted_at
+        `SELECT id, username, display_name, password_hash, avatar, created_at, last_login_at,
+                deleted_at, email, email_verified_at, pending_email
            FROM users WHERE username = ?`,
         [username]
       );
@@ -345,19 +544,221 @@ export function installAuth(app) {
       const now = Date.now();
       await query('UPDATE users SET last_login_at = ? WHERE id = ?', [now, row.id]);
       await createSession(res, row.id, req.body?.remember, req);
-      return res.json({
-        ok: true,
-        user: {
-          id: row.id,
-          username: row.username,
-          displayName: row.display_name,
-          avatar: row.avatar,
-          createdAt: Number(row.created_at),
-          lastLoginAt: now,
-        },
-      });
+      row.last_login_at = now;
+      return res.json({ ok: true, user: publicUser(row), mailEnabled });
     } catch (error) {
       console.error('[mmc] login failed', error.message);
+      return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+    }
+  });
+
+  router.post('/auth/forgot-password', forgotIpLimiter, async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    const lang = langOf(req.body?.lang);
+    const generic = () => res.json({ ok: true });
+    if (!email || !mailEnabled) return generic();
+    if (!allowForgotEmail(email)) return generic();
+    try {
+      const result = await query(
+        `SELECT id, username FROM users
+          WHERE email = ? AND email_verified_at IS NOT NULL AND deleted_at IS NULL`,
+        [email]
+      );
+      const row = result.rows[0];
+      if (row) {
+        // Tao token + gui thu o nen de thoi gian phan hoi khong tiet lo
+        // email co tai khoan hay khong.
+        void (async () => {
+          try {
+            const token = await issueResetToken(row.id);
+            const link = actionLink('reset', token);
+            if (link) {
+              queueMail({
+                ...passwordResetMail({
+                  lang,
+                  link,
+                  username: row.username,
+                  minutes: resetTokenMinutes,
+                }),
+                to: email,
+              });
+            }
+          } catch (error) {
+            console.error('[mmc] forgot password mail failed', error.code || 'error');
+          }
+        })();
+      }
+    } catch (error) {
+      // Khong log token hay email; chi ma loi.
+      console.error('[mmc] forgot password failed', error.code || 'error');
+    }
+    return generic();
+  });
+
+  router.post('/auth/reset-password/check', resetCheckLimiter, async (req, res) => {
+    try {
+      const token = safeToken(req.body?.token);
+      if (!token) return res.json({ ok: true, valid: false });
+      const result = await query(
+        'SELECT expires_at, used_at FROM password_resets WHERE token_hash = ?',
+        [sha256(token)]
+      );
+      const row = result.rows[0];
+      const valid = Boolean(
+        row && row.used_at === null && Number(row.expires_at) > Date.now()
+      );
+      return res.json({ ok: true, valid });
+    } catch (error) {
+      console.error('[mmc] reset token check failed', error.code || 'error');
+      return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+    }
+  });
+
+  router.post('/auth/reset-password', resetIpLimiter, async (req, res) => {
+    try {
+      const token = safeToken(req.body?.token);
+      if (!token) return res.status(400).json({ ok: false, code: 'RESET_TOKEN_INVALID' });
+      const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+      const tokenHash = sha256(token);
+      const lookup = await query(
+        `SELECT r.id, r.expires_at, r.used_at, u.id AS user_id, u.username, u.email,
+                u.email_verified_at, u.deleted_at
+           FROM password_resets r JOIN users u ON u.id = r.user_id
+          WHERE r.token_hash = ?`,
+        [tokenHash]
+      );
+      const found = lookup.rows[0];
+      if (!found || found.used_at !== null || found.deleted_at !== null) {
+        return res.status(400).json({ ok: false, code: 'RESET_TOKEN_INVALID' });
+      }
+      if (Number(found.expires_at) <= Date.now()) {
+        return res.status(410).json({ ok: false, code: 'RESET_TOKEN_EXPIRED' });
+      }
+      const problem = passwordProblem(newPassword, found.username);
+      if (problem) return res.status(400).json({ ok: false, code: problem });
+      const hash = await hashPassword(newPassword);
+      const now = Date.now();
+      let claimed = false;
+      try {
+        await transaction(async (tx) => {
+          const update = await tx.query(
+            `UPDATE password_resets SET used_at = ?
+              WHERE id = ? AND used_at IS NULL AND expires_at > ?`,
+            [now, found.id, now]
+          );
+          if (update.rowCount !== 1) {
+            const error = new Error('reset-token-invalid');
+            error.code = 'RESET_TOKEN_INVALID';
+            throw error;
+          }
+          const changed = await tx.query(
+            `UPDATE users SET password_hash = ?
+              WHERE id = ? AND deleted_at IS NULL`,
+            [hash, found.user_id]
+          );
+          if (changed.rowCount !== 1) {
+            const error = new Error('reset-user-invalid');
+            error.code = 'RESET_TOKEN_INVALID';
+            throw error;
+          }
+          await tx.query('DELETE FROM sessions WHERE user_id = ?', [found.user_id]);
+          await tx.query(
+            'UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL',
+            [now, found.user_id]
+          );
+        });
+        claimed = true;
+      } catch (error) {
+        if (error.code === 'RESET_TOKEN_INVALID') {
+          return res.status(400).json({ ok: false, code: 'RESET_TOKEN_INVALID' });
+        }
+        throw error;
+      }
+      if (claimed && found.email && found.email_verified_at !== null) {
+        queueMail({
+          ...passwordChangedMail({
+            lang: langOf(req.body?.lang),
+            time: mailTime(langOf(req.body?.lang)),
+            username: found.username,
+          }),
+          to: found.email,
+        });
+      }
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error('[mmc] reset password failed', error.code || error.message);
+      return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+    }
+  });
+
+  router.post('/auth/verify-email', verifyIpLimiter, async (req, res) => {
+    try {
+      const token = safeToken(req.body?.token);
+      if (!token) return res.status(400).json({ ok: false, code: 'VERIFY_TOKEN_INVALID' });
+      const tokenHash = sha256(token);
+      const lookup = await query(
+        `SELECT v.id, v.user_id, v.email, v.expires_at, v.used_at, u.username, u.deleted_at
+           FROM email_verifications v JOIN users u ON u.id = v.user_id
+          WHERE v.token_hash = ?`,
+        [tokenHash]
+      );
+      const found = lookup.rows[0];
+      if (!found || found.used_at !== null || found.deleted_at !== null) {
+        return res.status(400).json({ ok: false, code: 'VERIFY_TOKEN_INVALID' });
+      }
+      if (Number(found.expires_at) <= Date.now()) {
+        return res.status(400).json({ ok: false, code: 'VERIFY_TOKEN_INVALID' });
+      }
+      const now = Date.now();
+      let emailTaken = false;
+      await transaction(async (tx) => {
+        const update = await tx.query(
+          `UPDATE email_verifications SET used_at = ?
+            WHERE id = ? AND used_at IS NULL AND expires_at > ?`,
+          [now, found.id, now]
+        );
+        if (update.rowCount !== 1) {
+          const error = new Error('verify-token-invalid');
+          error.code = 'VERIFY_TOKEN_INVALID';
+          throw error;
+        }
+        const other = await tx.query(
+          `SELECT id FROM users
+            WHERE email = ? AND email_verified_at IS NOT NULL
+              AND deleted_at IS NULL AND id <> ?`,
+          [found.email, found.user_id]
+        );
+        if (other.rows.length) {
+          emailTaken = true;
+          return;
+        }
+        const changed = await tx.query(
+          `UPDATE users SET email = ?, email_verified_at = ?, pending_email = NULL
+            WHERE id = ? AND deleted_at IS NULL`,
+          [found.email, now, found.user_id]
+        );
+        if (changed.rowCount !== 1) {
+          const error = new Error('verify-user-invalid');
+          error.code = 'VERIFY_TOKEN_INVALID';
+          throw error;
+        }
+        await tx.query(
+          'DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL',
+          [found.user_id]
+        );
+      });
+      if (emailTaken) {
+        return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN' });
+      }
+      return res.json({ ok: true, emailMasked: maskEmail(found.email) });
+    } catch (error) {
+      if (error.code === 'VERIFY_TOKEN_INVALID') {
+        return res.status(400).json({ ok: false, code: 'VERIFY_TOKEN_INVALID' });
+      }
+      if (isUniqueViolation(error)) {
+        return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN' });
+      }
+      console.error('[mmc] verify email failed', error.code || error.message);
       return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
     }
   });
@@ -387,6 +788,98 @@ export function installAuth(app) {
     next();
   }
 
+  router.post('/me/email', requireUser, changeEmailLimiter, async (req, res) => {
+    try {
+      if (!mailEnabled) return res.status(400).json({ ok: false, code: 'MAIL_DISABLED' });
+      const email = normalizeEmail(req.body?.email);
+      if (!email) return res.status(400).json({ ok: false, code: 'EMAIL_INVALID' });
+      const current = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
+      const row = await userEmailRow(req.user.id);
+      const passwordRow = await query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+      const stored = passwordRow.rows[0];
+      if (!row || !stored || !(await verifyPassword(current, stored.password_hash))) {
+        return res.status(400).json({ ok: false, code: 'WRONG_PASSWORD' });
+      }
+      if (row.email && row.email_verified_at !== null && row.email === email) {
+        const unchanged = await query(
+          `SELECT id, username, display_name, avatar, created_at, last_login_at,
+                  email, email_verified_at, pending_email
+             FROM users WHERE id = ?`,
+          [req.user.id]
+        );
+        return res.json({ ok: true, unchanged: true, user: publicUser(unchanged.rows[0]) });
+      }
+      const taken = await query(
+        `SELECT id FROM users
+          WHERE email = ? AND email_verified_at IS NOT NULL
+            AND deleted_at IS NULL AND id <> ?`,
+        [email, req.user.id]
+      );
+      if (taken.rows.length) {
+        return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN' });
+      }
+      await query('UPDATE users SET pending_email = ? WHERE id = ?', [email, req.user.id]);
+      const lang = langOf(req.body?.lang);
+      let mailSent = false;
+      try {
+        mailSent = await queueVerificationMail({
+          userId: req.user.id,
+          email,
+          username: row.username,
+          lang,
+        });
+        if (row.email && row.email_verified_at !== null) {
+          queueMail({
+            ...emailChangeNoticeMail({
+              lang,
+              time: mailTime(lang),
+              newEmailMasked: maskEmail(email),
+            }),
+            to: row.email,
+          });
+        }
+      } catch (error) {
+        console.error('[mmc] change email mail failed', error.code || 'error');
+      }
+      const updated = await query(
+        `SELECT id, username, display_name, avatar, created_at, last_login_at,
+                email, email_verified_at, pending_email
+           FROM users WHERE id = ?`,
+        [req.user.id]
+      );
+      return res.json({ ok: true, mailSent, user: publicUser(updated.rows[0]) });
+    } catch (error) {
+      console.error('[mmc] change email failed', error.code || error.message);
+      return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+    }
+  });
+
+  router.post('/me/email/resend', requireUser, resendLimiter, async (req, res) => {
+    try {
+      if (!mailEnabled) return res.status(400).json({ ok: false, code: 'MAIL_DISABLED' });
+      const row = await userEmailRow(req.user.id);
+      if (!row) return res.status(401).json({ ok: false, code: 'AUTH_REQUIRED' });
+      const target = row.pending_email || (row.email_verified_at === null ? row.email : null);
+      if (!target) return res.status(400).json({ ok: false, code: 'EMAIL_REQUIRED' });
+      const sent = await queueVerificationMail({
+        userId: row.id,
+        email: target,
+        username: row.username,
+        lang: langOf(req.body?.lang),
+      });
+      const updated = await query(
+        `SELECT id, username, display_name, avatar, created_at, last_login_at,
+                email, email_verified_at, pending_email
+           FROM users WHERE id = ?`,
+        [req.user.id]
+      );
+      return res.json({ ok: true, mailSent: sent, user: publicUser(updated.rows[0]) });
+    } catch (error) {
+      console.error('[mmc] resend verification failed', error.code || error.message);
+      return res.status(500).json({ ok: false, code: 'SERVER_ERROR' });
+    }
+  });
+
   router.patch('/me', requireUser, async (req, res) => {
     try {
       const updates = [];
@@ -410,7 +903,8 @@ export function installAuth(app) {
       params.push(req.user.id);
       await query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
       const result = await query(
-        `SELECT id, username, display_name, avatar, created_at, last_login_at
+        `SELECT id, username, display_name, avatar, created_at, last_login_at,
+                email, email_verified_at, pending_email
            FROM users WHERE id = ?`,
         [req.user.id]
       );
@@ -442,6 +936,18 @@ export function installAuth(app) {
           sha256(req.sessionToken),
         ]);
       }
+      const account = await userEmailRow(req.user.id);
+      if (account?.email && account.email_verified_at !== null) {
+        const lang = langOf(req.body?.lang);
+        queueMail({
+          ...passwordChangedMail({
+            lang,
+            time: mailTime(lang),
+            username: account.username,
+          }),
+          to: account.email,
+        });
+      }
       return res.json({ ok: true });
     } catch (error) {
       console.error('[mmc] password change failed', error.message);
@@ -462,10 +968,28 @@ export function installAuth(app) {
       const anonymousHash = await hashPassword(crypto.randomUUID());
       await transaction(async (tx) => {
         await tx.query('DELETE FROM sessions WHERE user_id = ?', [req.user.id]);
+        await tx.query('DELETE FROM email_verifications WHERE user_id = ?', [req.user.id]);
+        await tx.query('DELETE FROM password_resets WHERE user_id = ?', [req.user.id]);
         await tx.query(
-          `UPDATE users SET username = ?, display_name = ?, deleted_at = ?, password_hash = ?
+          `UPDATE users SET username = ?, display_name = ?, deleted_at = ?, password_hash = ?,
+                            email = NULL, email_verified_at = NULL, pending_email = NULL
              WHERE id = ?`,
-          [anonymous, 'Người chơi đã xóa', now, anonymousHash, req.user.id]
+          [anonymous, DELETED_PLAYER_NAME, now, anonymousHash, req.user.id]
+        );
+        // An danh ca ten da chup trong lich su van cua doi thu.
+        await tx.query(
+          `UPDATE matches SET
+             player_a_name = CASE WHEN player_a_user_id = ? THEN ? ELSE player_a_name END,
+             player_b_name = CASE WHEN player_b_user_id = ? THEN ? ELSE player_b_name END
+           WHERE player_a_user_id = ? OR player_b_user_id = ?`,
+          [
+            req.user.id,
+            DELETED_PLAYER_NAME,
+            req.user.id,
+            DELETED_PLAYER_NAME,
+            req.user.id,
+            req.user.id,
+          ]
         );
       });
       clearSessionCookie(res);

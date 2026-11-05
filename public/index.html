@@ -65,6 +65,13 @@
               </div>
             </div>
 
+            <div id="email-banner" class="email-banner" hidden>
+              <span class="email-banner-icon" aria-hidden="true">✉️</span>
+              <p id="email-banner-text" class="email-banner-text"></p>
+              <button id="email-banner-action" class="btn mini primary" type="button" data-i18n="addEmail"></button>
+              <button id="email-banner-dismiss" class="icon-btn email-banner-close" type="button" data-i18n-aria="dismiss">×</button>
+            </div>
+
             <div class="profile-card">
               <label class="field-label" for="name-input" data-i18n="yourName"></label>
               <input
@@ -172,6 +179,7 @@
               <input id="login-remember" type="checkbox" checked />
               <span data-i18n="rememberMe"></span>
             </label>
+            <button id="forgot-password-link" class="link-btn" type="button" data-i18n="forgotPassword" hidden></button>
             <p id="login-error" class="form-error" role="alert" hidden></p>
             <button id="login-submit" class="btn primary wide" type="submit" data-i18n="login"></button>
           </form>
@@ -189,6 +197,19 @@
               required
             />
             <p class="field-help" data-i18n="usernameHelp"></p>
+
+            <label class="field-label" for="register-email" data-i18n="emailLabel"></label>
+            <input
+              id="register-email"
+              class="text-input"
+              type="email"
+              autocomplete="email"
+              inputmode="email"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="254"
+            />
+            <p id="register-email-help" class="field-help" data-i18n="emailRegisterHelp"></p>
 
             <label class="field-label" for="register-display-name" data-i18n="displayName"></label>
             <input
@@ -234,6 +255,109 @@
         </div>
       </section>
 
+      <!-- ================= QUEN MAT KHAU ================= -->
+      <section id="screen-forgot" class="screen" data-screen="forgot" hidden>
+        <header class="screen-head">
+          <button id="forgot-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="forgotTitle"></h2>
+        </header>
+
+        <div class="account-card auth-card">
+          <p class="hint" data-i18n="forgotHelp"></p>
+          <form id="forgot-form" class="auth-form" autocomplete="on">
+            <label class="field-label" for="forgot-email" data-i18n="emailLabel"></label>
+            <input
+              id="forgot-email"
+              class="text-input"
+              type="email"
+              autocomplete="email"
+              inputmode="email"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="254"
+              required
+            />
+            <p id="forgot-error" class="form-error" role="alert" hidden></p>
+            <p id="forgot-status" class="form-success" role="status" hidden></p>
+            <button id="forgot-submit" class="btn primary wide" type="submit" data-i18n="sendResetLink"></button>
+            <button id="forgot-resend" class="btn secondary wide" type="button" data-i18n="sendAgain" hidden></button>
+          </form>
+          <p class="hint" data-i18n="forgotGeneric"></p>
+          <button id="forgot-login" class="btn ghost wide" type="button" data-i18n="backToLogin"></button>
+        </div>
+      </section>
+
+      <!-- ================= DAT LAI MAT KHAU ================= -->
+      <section id="screen-reset" class="screen" data-screen="reset" hidden>
+        <header class="screen-head">
+          <button id="reset-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="resetTitle"></h2>
+        </header>
+
+        <div class="account-card auth-card">
+          <p id="reset-loading" class="hint" role="status"></p>
+
+          <div id="reset-invalid" class="reset-state" hidden>
+            <p class="form-error" data-i18n="resetInvalidHelp"></p>
+            <button id="reset-request-new" class="btn primary wide" type="button" data-i18n="requestNewLink"></button>
+          </div>
+
+          <div id="reset-offline" class="reset-state" hidden>
+            <p class="hint" data-i18n="offlineRetryLater"></p>
+            <button id="reset-retry" class="btn secondary wide" type="button" data-i18n="retry"></button>
+          </div>
+
+          <form id="reset-form" class="auth-form" autocomplete="on" hidden>
+            <label class="field-label" for="reset-password" data-i18n="newPassword"></label>
+            <div class="password-row">
+              <input
+                id="reset-password"
+                class="text-input"
+                type="password"
+                autocomplete="new-password"
+                maxlength="72"
+                required
+              />
+              <button class="password-toggle" type="button" data-toggle-password="reset-password" data-i18n-aria="showPassword">👁</button>
+            </div>
+            <div class="strength" aria-hidden="true">
+              <div class="strength-track"><div id="reset-strength-fill" class="strength-fill"></div></div>
+              <span id="reset-strength-text" class="strength-text"></span>
+            </div>
+            <label class="field-label" for="reset-confirm" data-i18n="confirmPassword"></label>
+            <div class="password-row">
+              <input
+                id="reset-confirm"
+                class="text-input"
+                type="password"
+                autocomplete="new-password"
+                maxlength="72"
+                required
+              />
+              <button class="password-toggle" type="button" data-toggle-password="reset-confirm" data-i18n-aria="showPassword">👁</button>
+            </div>
+            <p id="reset-error" class="form-error" role="alert" hidden></p>
+            <button id="reset-submit" class="btn primary wide" type="submit" data-i18n="resetSubmit"></button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================= XAC THUC EMAIL ================= -->
+      <section id="screen-verify" class="screen" data-screen="verify" hidden>
+        <header class="screen-head">
+          <button id="verify-back" class="icon-btn" type="button" data-i18n-aria="back">←</button>
+          <h2 data-i18n="verifyTitle"></h2>
+        </header>
+
+        <div class="account-card auth-card">
+          <p id="verify-loading" class="hint" role="status"></p>
+          <p id="verify-status" class="form-success" role="status" hidden></p>
+          <p id="verify-error" class="form-error" role="alert" hidden></p>
+          <button id="verify-retry" class="btn secondary wide" type="button" data-i18n="retry" hidden></button>
+          <button id="verify-home" class="btn ghost wide" type="button" data-i18n="home"></button>
+        </div>
+      </section>
+
       <!-- ================= HO SO ================= -->
       <section id="screen-profile" class="screen" data-screen="profile" hidden>
         <header class="screen-head">
@@ -257,6 +381,45 @@
           <p id="profile-error" class="form-error" role="alert" hidden></p>
           <p id="profile-success" class="form-success" role="status" hidden></p>
           <button id="profile-save" class="btn primary wide" type="button" data-i18n="saveChanges"></button>
+
+          <hr class="soft-rule" />
+
+          <h3 class="section-title" data-i18n="emailTitle"></h3>
+          <div class="email-profile">
+            <div class="email-current">
+              <strong id="profile-email">—</strong>
+              <span id="profile-email-badge" class="email-badge" hidden></span>
+            </div>
+            <p id="profile-email-pending" class="hint" hidden></p>
+            <button id="email-resend" class="btn secondary small" type="button" data-i18n="resendVerification" hidden></button>
+            <p id="mail-disabled-note" class="hint" data-i18n="mailDisabledNote" hidden></p>
+            <form id="email-form" class="auth-form" autocomplete="on">
+              <label class="field-label" for="email-new" data-i18n="newEmailLabel"></label>
+              <input
+                id="email-new"
+                class="text-input"
+                type="email"
+                autocomplete="email"
+                inputmode="email"
+                autocapitalize="none"
+                spellcheck="false"
+                maxlength="254"
+                required
+              />
+              <label class="field-label" for="email-current-password" data-i18n="currentPassword"></label>
+              <input
+                id="email-current-password"
+                class="text-input"
+                type="password"
+                autocomplete="current-password"
+                maxlength="72"
+                required
+              />
+              <p id="email-error" class="form-error" role="alert" hidden></p>
+              <p id="email-success" class="form-success" role="status" hidden></p>
+              <button id="email-submit" class="btn secondary wide" type="submit" data-i18n="changeEmail"></button>
+            </form>
+          </div>
 
           <hr class="soft-rule" />
 

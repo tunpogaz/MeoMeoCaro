@@ -70,6 +70,38 @@ const MIGRATIONS = [
       'CREATE INDEX idx_sessions_expires ON sessions (expires_at)',
     ],
   },
+  {
+    version: '002_email_auth',
+    statements: [
+      'ALTER TABLE users ADD COLUMN email TEXT NULL',
+      'ALTER TABLE users ADD COLUMN email_verified_at BIGINT NULL',
+      'ALTER TABLE users ADD COLUMN pending_email TEXT NULL',
+      `CREATE TABLE email_verifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        used_at BIGINT NULL
+      )`,
+      `CREATE TABLE password_resets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        used_at BIGINT NULL
+      )`,
+      `CREATE UNIQUE INDEX idx_users_email_verified
+         ON users (email)
+         WHERE email_verified_at IS NOT NULL AND deleted_at IS NULL`,
+      'CREATE INDEX idx_email_verifications_user ON email_verifications (user_id)',
+      'CREATE INDEX idx_email_verifications_expires ON email_verifications (expires_at)',
+      'CREATE INDEX idx_password_resets_user ON password_resets (user_id)',
+      'CREATE INDEX idx_password_resets_expires ON password_resets (expires_at)',
+    ],
+  },
 ];
 
 function splitSqlStatements(sql) {

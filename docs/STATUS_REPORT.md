@@ -163,3 +163,39 @@ Sao lưu trước khi sửa: commit `8eb565b` và tag `backup-before-handover`; 
 - `db.js` dùng `rejectUnauthorized: false` cho PostgreSQL khi bật SSL; phù hợp Render/Neon nhưng chưa hỗ trợ CA riêng.
 - Xoá mềm ẩn danh bảng `users` nhưng tên gốc vẫn nằm trong ảnh chụp của bảng `matches`; API đã che, dữ liệu gốc chỉ lộ nếu database bị truy cập trực tiếp.
 - Migration chưa có khoá liên tiến trình; phù hợp mô hình một instance hiện tại.
+
+---
+
+## Cập nhật đợt nâng cấp #5 — email, quên mật khẩu, server đang ngủ (2026-11-05)
+
+Phần trên là ảnh chụp bàn giao trước đợt #5. Đợt này sửa tại chỗ, giữ tương thích ngược và không xoá dữ liệu người dùng.
+
+### Việc tồn đọng đã xử lý
+
+1. **`refreshAccount` không còn tự đăng xuất khi lỗi mạng.** Logic được tách sang `public/js/wake.js`: lỗi `NETWORK`/`HTTP_0`/5xx được thử lại với backoff 1.2s → 1.9s → 3.1s … tối đa 10s/lần, tổng ~90 giây, hiện banner "đang đánh thức server". Chỉ `401` hoặc `{user:null}` mới chuyển về khách. Không thử lại khi `navigator.onLine === false` để PWA offline mở nhanh. Màn hình `#reset=`/`#verify=` dùng cùng helper nên cũng chờ server thay vì báo lỗi ngay.
+2. **Xoá tài khoản ẩn danh cả ảnh chụp tên trong `matches`.** Trong cùng transaction với xoá mềm `users`, cập nhật `player_a_name`/`player_b_name` thành "Người chơi đã xóa" cho mọi ván người đó tham gia. Bản ghi `users` vẫn được giữ, email và toàn bộ token bị xoá; đối thủ vẫn xem lịch sử bình thường.
+
+### Phạm vi mới
+
+- `mailer.js`: provider `console`/`smtp` (nodemailer)/`resend` (fetch)/`test` (outbox), `sendMail` không bao giờ ném lỗi và thử lại một lần; mẫu thư VI/EN; link luôn từ `PUBLIC_URL`.
+- Migration `002_email_auth`: cột `email`, `email_verified_at`, `pending_email`; bảng `email_verifications`, `password_resets`; partial unique index cho email đã xác thực; index hết hạn.
+- API: `GET /api/config`; đăng ký kèm email; `POST /api/auth/forgot-password`, `/reset-password/check`, `/reset-password`, `/verify-email`; `POST /api/me/email`, `/me/email/resend`; `/api/auth/me` thêm `emailMasked`, `pendingEmailMasked`, `emailVerified`, `hasPendingEmail`.
+- Token 32 byte base64url, DB chỉ lưu SHA-256, dùng một lần trong transaction; yêu cầu mới vô hiệu hoá token cũ; hạn mặc định 30 phút (reset) và 24 giờ (xác thực).
+- Rate limit: quên mật khẩu 5/IP/giờ + 3/email/giờ (vượt email vẫn trả generic), kiểm tra reset 10/IP/15 phút, resend 3/tài khoản/giờ, đổi email 5/tài khoản/giờ.
+- Giao diện VI/EN: ô email đăng ký, banner nhắc xác thực (bỏ qua 7 ngày qua localStorage có try/catch), màn quên/đặt lại/xác thực, đếm ngược 60 giây, hồ sơ có email che, huy hiệu xác thực, email chờ xác thực và form đổi email cần mật khẩu hiện tại.
+- `scripts/admin-reset-password.js`: in link đặt lại cục bộ cho tài khoản không có email xác thực; không gọi API, không ghi token vào log ứng dụng.
+- Service worker `meo-meo-caro-v9` thêm `wake.js`; vẫn không cache `/api/*`, `/socket.io/*`, `/health`.
+- Tài liệu: README, `.env.example`, `render.yaml` mô tả `PUBLIC_URL`, provider, SMTP/Resend, hạn token và cách xử lý sự cố.
+
+### Kiểm thử
+
+- `npm test`: **108 test, 0 lỗi** trên SQLite tạm (ai 27, wake 8, server 29, auth 15, history 8, password-reset 21).
+- `test/password-reset.test.mjs` chạy server thật với `MAIL_PROVIDER=test`; kiểm tra token chỉ có trong thư, DB chỉ lưu hash, link không theo Host giả, phản hồi quên mật khẩu đồng nhất, dùng lại/hết hạn token, hai request đồng thời, rate limit, đổi email, xoá tài khoản và ẩn danh tên trong lịch sử, không lộ token trong log/response.
+- `test/wake.test.mjs` kiểm tra backoff, giới hạn 90 giây, offline, 4xx không thử lại và quy tắc giữ đăng nhập.
+
+### Giới hạn còn lại
+
+- Chưa có đăng nhập bằng email/OAuth; email chỉ để xác thực và khôi phục.
+- Gửi thư phụ thuộc nhà cung cấp bên ngoài; Gmail có giới hạn/ngày, Resend yêu cầu xác minh domain.
+- Ứng dụng vẫn chạy một instance; phòng online nằm trong RAM.
+- Bộ test tự động chạy SQLite; PostgreSQL cần chạy tay với `DATABASE_URL` test nếu muốn xác nhận.

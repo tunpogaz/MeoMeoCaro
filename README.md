@@ -21,15 +21,15 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax đầy đủ trên 3×3 nên không thể thua. Bàn ∞ dùng danh sách ô gần quân, iterative deepening sâu 3–4 trong Web Worker (~800ms), trả nước hợp lệ kể cả khi hết thời gian |
 | Bàn cờ | Lưới 3×3 dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo. Bàn ∞ vẽ bằng Canvas có ảo hoá ô, kéo để di chuyển, cuộn/chụm để thu phóng, nút ± / về giữa / tới nước vừa đánh, mũi tên chỉ nước ngoài màn hình và hoạt ảnh mở rộng vùng |
 | Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang trên màn 320px; bàn ∞ dùng `touch-action: none` để chạm/kéo/chụm không cuộn trang, có nhãn toạ độ, tổng số nước và thông báo cho trình đọc màn hình |
-| Tài khoản | Đăng ký / đăng nhập / đăng xuất, ghi nhớ phiên, hồ sơ (tên hiển thị + avatar), đổi mật khẩu (thu hồi các phiên khác), xoá tài khoản mềm. Tên đăng nhập 3–20 ký tự `[a-zA-Z0-9_]`, không phân biệt hoa thường; mật khẩu 8–72 ký tự, chặn mật khẩu phổ biến và trùng tên đăng nhập; thanh độ mạnh mật khẩu; lỗi hiển thị theo mã đã dịch. Khách vẫn chơi AI / 2 người / online nhưng không lưu lịch sử |
+| Tài khoản | Đăng ký / đăng nhập / đăng xuất, ghi nhớ phiên, hồ sơ (tên hiển thị + avatar), đổi mật khẩu (thu hồi các phiên khác), xoá tài khoản mềm. Khi bật email: xác thực địa chỉ bằng link, quên/đặt lại mật khẩu bằng link dùng một lần, đổi email qua bước xác thực email mới, banner nhắc xác thực. Tên đăng nhập 3–20 ký tự `[a-zA-Z0-9_]`, không phân biệt hoa thường; mật khẩu 8–72 ký tự, chặn mật khẩu phổ biến và trùng tên đăng nhập; thanh độ mạnh mật khẩu; lỗi hiển thị theo mã đã dịch. Khách vẫn chơi AI / 2 người / online nhưng không lưu lịch sử |
 | Lịch sử & thống kê | Chỉ lưu ván online có ít nhất một tài khoản; mỗi ván lưu một lần (thắng, hoà, chạm giới hạn nước, mất kết nối, rời phòng), đấu lại tạo bản ghi mới. Danh sách có phân trang (≤50), lọc theo cỡ bàn và kết quả; chi tiết chỉ người trong ván xem được (người ngoài nhận 404). Thống kê thắng/hoà/thua và tỷ lệ thắng theo từng cỡ bàn. Đối thủ đã xoá tài khoản hiển thị là "Người chơi đã xóa" |
 | Xem lại ván | Trình phát lại chỉ đọc dùng lại bàn 3×3 hoặc Canvas ∞: nút đầu / trước / phát–tạm dừng / sau / cuối, thanh tua, tốc độ 0.5×–4×, bộ đếm nước, đánh dấu nước hiện tại và vẽ đường thắng ở nước cuối |
 | Lời mời | Link `location.origin/?room=CODE`, sao chép và chia sẻ. Khách mở link được đưa tới đăng nhập/đăng ký hoặc "Chơi với tư cách khách" rồi tự vào phòng, giữ nguyên mã phòng. Tài khoản đã đăng nhập thấy hộp xác nhận cỡ bàn / luật / chủ phòng trước khi vào. Mã sai, phòng đầy hoặc đã đóng báo rõ và tự bỏ `?room` khỏi URL. Chờ server thức dậy 30–90 giây với thông báo trạng thái |
 | Cài đặt | Bật/tắt âm thanh, nhạc nền, giảm chuyển động; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
 | Lưu trữ | localStorage: hồ sơ khách, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3. Tài khoản và lịch sử nằm ở database phía server |
 | Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (3×3 hoặc ∞), đồng hồ 30 giây/lượt (∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi |
-| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞ và `api.js`, cache v7), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
-| Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập; Helmet + CSP; SQL tham số hoá; không trả `password_hash`, `token_hash` hay `user_id` của người khác |
+| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞, `api.js` và `wake.js`, cache v9), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
+| Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; token đặt lại/xác thực email cũng 32 byte, chỉ lưu SHA-256 và dùng một lần; link email luôn dựng từ `PUBLIC_URL`, token chỉ nằm trong URL fragment; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập/quên mật khẩu/đổi email; Helmet + CSP + `Referrer-Policy: no-referrer`; SQL tham số hoá; không trả `password_hash`, `token_hash`, email đầy đủ của người khác hay `user_id` của người khác |
 
 ---
 
@@ -52,17 +52,19 @@ meo-meo-caro/
 ├── package-lock.json
 ├── server.js                 # Express + Socket.IO, nguồn sự thật của chế độ online
 ├── db.js                     # adapter PostgreSQL/SQLite, migration, query, transaction
-├── auth.js                   # scrypt, phiên đăng nhập, API tài khoản, CSRF, rate limit
+├── auth.js                   # scrypt, phiên đăng nhập, API tài khoản, email/quên mật khẩu, CSRF
+├── mailer.js                 # console/smtp/resend/test, mẫu thư VI/EN, link từ PUBLIC_URL
 ├── history.js                # lưu ván một lần, API lịch sử / chi tiết / thống kê
 ├── render.yaml               # blueprint Render: web service + PostgreSQL
 ├── .env.example              # mẫu biến môi trường (không chứa bí mật)
 ├── scripts/
-│   └── migrate.js            # `npm run migrate`
+│   ├── migrate.js            # `npm run migrate`
+│   └── admin-reset-password.js # `npm run admin:reset-password -- <username>` (local)
 ├── README.md
 ├── public/
 │   ├── index.html            # các màn hình game, tài khoản, hồ sơ, lịch sử, thống kê, dialog
 │   ├── manifest.json         # PWA manifest
-│   ├── sw.js                 # service worker: app shell + offline AI (cache v7)
+│   ├── sw.js                 # service worker: app shell + offline AI (cache v9)
 │   ├── css/
 │   │   └── style.css         # giao diện bàn 3×3, tài khoản/lịch sử/replay, responsive
 │   ├── assets/
@@ -75,6 +77,7 @@ meo-meo-caro/
 │       ├── main.js           # bộ điều khiển trung tâm (điều hướng, ván chơi, online,
 │       │                     # tài khoản, lịch sử, replay, lời mời)
 │       ├── api.js            # gọi REST /api, lỗi mã hoá, timeout
+│       ├── wake.js           # thử lại khi server Render đang ngủ (backoff ~90 giây)
 │       ├── game-core.js      # cấu hình cỡ bàn, bàn cờ, luật thắng/thua/hòa, bàn ∞
 │       ├── ai.js             # AI 3 độ khó cho 3×3 và bàn ∞
 │       ├── ai-worker.js      # Web Worker chạy AI bàn vô cực
@@ -89,7 +92,9 @@ meo-meo-caro/
     ├── ai.test.mjs           # luật chơi 3×3 và ∞, AI các độ khó, duyệt cạn AI Khó
     ├── server.test.mjs       # Socket.IO thật: phòng, cỡ bàn 3×3 và ∞, tài khoản, rejoin
     ├── auth.test.mjs         # đăng ký/đăng nhập/phiên/CSRF/rate limit/xoá tài khoản/migration
-    └── history.test.mjs      # lưu ván, lịch sử, replay, thống kê, quyền truy cập
+    ├── history.test.mjs      # lưu ván, lịch sử, replay, thống kê, quyền truy cập
+    ├── wake.test.mjs         # giữ đăng nhập khi lỗi mạng, backoff, offline, 4xx
+    └── password-reset.test.mjs # email xác thực, quên/đặt lại mật khẩu, đổi email, rate limit
 ```
 
 ---
@@ -216,6 +221,52 @@ Mở URL công khai mà công cụ in ra. Giữ nguyên một origin cho cả ha
 
 ---
 
+## Email: xác thực và quên mật khẩu
+
+Phần này là **tuỳ chọn**. Nếu không cấu hình `MAIL_PROVIDER`, server vẫn chạy bình thường, `GET /api/config` trả `mailEnabled:false`, ô email khi đăng ký là tuỳ chọn và các nút quên mật khẩu/đổi email bị ẩn. Không có đăng nhập bằng email; email chỉ dùng để xác thực và khôi phục mật khẩu.
+
+### Cấu hình
+
+| Biến | Ý nghĩa |
+| --- | --- |
+| `PUBLIC_URL` | URL công khai của app, ví dụ `https://meo-meo-caro.onrender.com`. Mọi link trong thư được dựng từ đây, **không** dùng `Host`/`Origin` của request. Production bắt buộc `https://`. |
+| `MAIL_PROVIDER` | `console` (in thư ra terminal), `smtp`, `resend` hoặc `test` (chỉ dùng trong test, production tự tắt). |
+| `MAIL_FROM` | Địa chỉ gửi, ví dụ `Meo Meo Caro <no-reply@domain.com>`. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` | Dùng khi `MAIL_PROVIDER=smtp`. Cổng 587 dùng `SMTP_SECURE=false` + STARTTLS; cổng 465 dùng `SMTP_SECURE=true`. |
+| `RESEND_API_KEY` | Dùng khi `MAIL_PROVIDER=resend`. |
+| `RESET_TOKEN_MINUTES` | Hạn link đặt lại mật khẩu, mặc định 30 phút. |
+| `VERIFY_TOKEN_HOURS` | Hạn link xác thực email, mặc định 24 giờ. |
+
+Nếu production đặt `MAIL_PROVIDER=console`/`test`, thiếu `PUBLIC_URL` https hoặc thiếu cấu hình provider, server **vẫn khởi động** nhưng ghi cảnh báo lúc khởi động và tự tắt email (`mailEnabled:false`) thay vì gửi thư lỗi.
+
+### Chọn nhà cung cấp
+
+- **Local (không gửi thư thật):** `MAIL_PROVIDER=console`, `PUBLIC_URL=http://localhost:3000`. Mở terminal sau khi bấm quên mật khẩu để lấy link. Không dùng chế độ này ở production.
+- **Gmail:** bật xác thực 2 bước, tạo **App Password** 16 ký tự, đặt `MAIL_PROVIDER=smtp`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, `SMTP_USER=<gmail>`, `SMTP_PASS=<app password>`, `MAIL_FROM` trùng địa chỉ Gmail. Gmail giới hạn số thư/ngày, phù hợp thử nghiệm.
+- **Brevo:** tạo SMTP key trong Brevo, `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, `SMTP_USER` là email đăng nhập Brevo, `SMTP_PASS` là SMTP key. Cần xác minh domain hoặc địa chỉ gửi trong Brevo.
+- **Resend:** xác minh domain ở Resend rồi đặt `MAIL_PROVIDER=resend`, `RESEND_API_KEY=...`, `MAIL_FROM` thuộc domain đã xác minh. Chưa xác minh domain thì chỉ gửi được tới địa chỉ chủ tài khoản.
+- **Render:** đặt các biến trên ở **Environment** (secret cho `SMTP_PASS`, `RESEND_API_KEY`; không commit). `render.yaml` khai báo sẵn tên biến với `sync: false`; `MAIL_PROVIDER` mặc định `console` nên phải đổi sang `smtp`/`resend` sau khi cấu hình.
+
+### Luồng hoạt động
+
+1. **Đăng ký:** nếu email bật, email là bắt buộc. Server gửi link `PUBLIC_URL/#verify=TOKEN`; tài khoản dùng được ngay nhưng hiện banner nhắc xác thực (bỏ qua được 7 ngày). Email chưa xác thực **không** nhận thư đặt lại mật khẩu.
+2. **Quên mật khẩu:** luôn trả `{ok:true}` dù email tồn tại hay không. Chỉ tài khoản có email **đã xác thực** mới nhận thư. Yêu cầu mới vô hiệu hoá token cũ. Link mở màn hình `#reset=TOKEN`, kiểm tra token trước khi cho nhập mật khẩu mới; đặt lại thành công thu hồi mọi phiên và gửi thư thông báo.
+3. **Đổi email trong hồ sơ:** cần mật khẩu hiện tại. Email mới nằm ở `pending_email`; email cũ vẫn dùng để đăng nhập/khôi phục cho tới khi bấm link xác thực email mới. Email cũ nhận thư thông báo. Không thể đặt email đã được tài khoản khác xác thực (`EMAIL_TAKEN`).
+4. **Token:** 32 byte ngẫu nhiên base64url, DB chỉ lưu SHA-256, dùng một lần trong transaction, hết hạn theo cấu hình. Token không bao giờ xuất hiện trong log/API; sau khi đọc `#reset=`/`#verify=` client xoá ngay khỏi thanh địa chỉ bằng `history.replaceState`.
+5. **Server đang ngủ:** các màn hình reset/verify và `/api/auth/me` tự thử lại với backoff tăng dần tới ~90 giây, hiện thông báo "đang đánh thức server". Lỗi mạng/timeout **không** đăng xuất người dùng; chỉ khi server trả `401` hoặc `{user:null}` mới chuyển về khách. Khi trình duyệt báo offline, app không chờ mà hiện thông báo thân thiện.
+
+### Tài khoản chưa có email xác thực
+
+Tài khoản cũ (hoặc đăng ký khi chưa bật email) không thể tự dùng quên mật khẩu. Trên máy chủ, chạy lệnh cục bộ sau để in một link đặt lại (không gọi API, không gửi thư):
+
+```bash
+npm run admin:reset-password -- <username>
+```
+
+Lệnh chỉ in link ra terminal; không ghi token vào log ứng dụng. Chỉ chạy trên máy bạn tin cậy.
+
+---
+
 ## Triển khai
 
 ### Render + PostgreSQL (Neon hoặc Supabase)
@@ -229,10 +280,11 @@ Mở URL công khai mà công cụ in ra. Giữ nguyên một origin cho cả ha
    - `DATABASE_URL` = chuỗi kết nối PostgreSQL (đặt ở Render Environment, **không commit**).
    - `SESSION_SECRET` = chuỗi ngẫu nhiên ≥ 32 ký tự (`render.yaml` dùng `generateValue: true`).
    - `NODE_ENV=production`, `TRUST_PROXY=1`, `PGSSL=true` nếu nhà cung cấp yêu cầu SSL.
+   - `PUBLIC_URL=https://<ten-app>.onrender.com` (bắt buộc https) và cấu hình email: `MAIL_PROVIDER=smtp|resend`, `MAIL_FROM`, các biến `SMTP_*` hoặc `RESEND_API_KEY`. Xem mục **Email** ở trên.
 5. Deploy. Migration tự chạy khi server khởi động; có thể chạy lại bằng `npm run migrate` trong Render Shell.
 6. Mở URL Render, kiểm tra `/health` trả `{"status":"ok"}`, sau đó thử đăng ký và một ván online giữa hai trình duyệt.
 
-`render.yaml` trong repo khai báo web service, health check, `SESSION_SECRET` tự sinh và một PostgreSQL free (nếu dùng Blueprint). Nếu dùng Neon/Supabase bên ngoài, xoá khối `databases` trong `render.yaml` và dán `DATABASE_URL` thủ công.
+`render.yaml` trong repo khai báo web service, health check, `SESSION_SECRET` tự sinh, một PostgreSQL free (nếu dùng Blueprint) và tên các biến email (`sync: false` để bạn tự nhập). Nếu dùng Neon/Supabase bên ngoài, xoá khối `databases` trong `render.yaml` và dán `DATABASE_URL` thủ công.
 
 ### Railway
 
@@ -256,25 +308,27 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 - Ứng dụng chỉ chạy tốt với **một instance**. Muốn mở rộng ngang, cần Redis adapter cho Socket.IO và nơi lưu trạng thái phòng dùng chung (xem mục nâng cấp).
 - WebSocket phải được proxy hỗ trợ. Render/Railway mặc định đã hỗ trợ; với nginx, thêm header `Upgrade`/`Connection`.
 - Rate limit dựa trên `req.ip`; sau proxy phải đặt `TRUST_PROXY` đúng số hop, nếu không mọi người có thể bị tính chung một IP.
-- Phiên hết hạn được dọn mỗi giờ; xoá tài khoản thu hồi mọi phiên ngay lập tức.
+- Phiên hết hạn và token email hết hạn được dọn mỗi giờ; xoá tài khoản thu hồi mọi phiên, xoá email và mọi token ngay lập tức, đồng thời ẩn danh tên người chơi trong ảnh chụp lịch sử.
 
 ### PWA
 
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
 - Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online và tài khoản cần server.
 - Service worker **không cache** `/api/*`, `/socket.io/*` hay `/health`, nên lịch sử và phiên đăng nhập luôn lấy dữ liệu mới.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v7`) để người dùng nhận bản mới. Cache v7 đã gồm `api.js` và toàn bộ module bàn ∞/AI.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v9`) để người dùng nhận bản mới. Cache v9 đã gồm `api.js`, `wake.js` và toàn bộ module bàn ∞/AI.
 
 ---
 
 ## Kiểm thử tự động
 
 ```bash
-npm test              # 79 test: ai + server + auth + history
-npm run test:ai       # 27 test
-npm run test:server   # 29 test
-npm run test:auth     # 15 test
-npm run test:history  # 8 test
+npm test                  # 108 test: ai + wake + server + auth + history + email
+npm run test:ai           # 27 test
+npm run test:wake         # 8 test
+npm run test:server       # 29 test
+npm run test:auth         # 15 test
+npm run test:history      # 8 test
+npm run test:password-reset # 21 test
 ```
 
 Mỗi bộ test server khởi động một tiến trình thật ở cổng ngẫu nhiên với **SQLite tạm riêng** (`mkdtemp`), không chạm vào `data/meo.db` và tự dọn sau khi chạy. Có thể kiểm tra PostgreSQL bằng cách chạy server với `DATABASE_URL` trỏ tới database test và lặp lại các kịch bản thủ công; bộ test tự động hiện chạy trên SQLite.
@@ -282,11 +336,13 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 - `test/ai.test.mjs` (27 test): cấu hình bàn 3×3, thắng đủ 4 hướng ở góc/cạnh/giữa, chuỗi ngắn không thắng, không vòng từ cuối hàng sang đầu hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó chỉ trả ô trống. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn và AI tự đánh nhau luôn hợp lệ.
 - `test/server.test.mjs` (29 test): tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; **cỡ bàn 3×3** (nhận `3` và `"3"`, từ chối cỡ khác bằng `UNSUPPORTED_BOARD_SIZE`, luật 3 quân, hòa kín bàn, F5 giữ `size`/`board`/`lastMove`, timer 30s); **∞** (vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng toạ độ âm, F5 khôi phục nước + vùng, timer 45s, hòa `INFINITE_MAX_MOVES`); **tài khoản** (danh tính lấy từ cookie, không lộ `userId`, một tài khoản không chiếm hai ghế, khách vẫn vào phòng tài khoản bằng tên riêng).
 - `test/auth.test.mjs` (15 test): cookie httpOnly/SameSite/Path/Max-Age, phiên 7 ngày khi không ghi nhớ, tên đăng nhập/mật khẩu yếu bị từ chối, trùng tên không phân biệt hoa thường, lỗi đăng nhập chung, CSRF thiếu Origin/nội dung không JSON, cập nhật hồ sơ, đổi mật khẩu thu hồi phiên khác nhưng giữ phiên hiện tại, phiên hết hạn bị xoá, đăng xuất, xoá tài khoản ẩn danh + thu hồi phiên, rate limit đăng nhập, migration chạy hai lần vẫn idempotent, production từ chối khởi động khi thiếu `SESSION_SECRET`.
+- `test/wake.test.mjs` (8 test): lỗi mạng/5xx được thử lại với backoff 1.2s → 1.9s → 3.1s … tối đa 10s/lần và dừng sau ~90 giây; không thử lại khi offline hoặc khi server trả 4xx; `/api/auth/me` giữ nguyên người đang đăng nhập khi lỗi mạng, chỉ về khách khi `401` hoặc `{user:null}`.
+- `test/password-reset.test.mjs` (21 test): `mailEnabled`/`no-store`, đăng ký + thư xác thực, DB chỉ lưu hash token, xác thực một lần, link dựng từ `PUBLIC_URL` (không theo Host giả), phản hồi quên mật khẩu luôn giống nhau cho email lạ/chưa xác thực/đã xoá, kiểm tra token, mật khẩu yếu, đặt lại mật khẩu + thu hồi phiên + thư thông báo, token cũ bị vô hiệu, hai request đồng thời chỉ một thắng, token hết hạn, chuẩn hoá email, trùng email chưa xác thực rồi `EMAIL_TAKEN`, đổi email giữ email cũ tới khi xác thực, resend vô hiệu token cũ, xoá tài khoản xoá email/token và ẩn danh tên trong `matches` (đối thủ vẫn xem lịch sử), không lộ token trong log/response, rate limit quên mật khẩu/resend, server không cấu hình mail vẫn chạy.
 - `test/history.test.mjs` (8 test): khách với khách không lưu ván; ván một tài khoản + khách lưu ảnh chụp đối thủ; chi tiết replay có đủ nước/đường thắng và chỉ người trong ván xem được; phân trang/lọc cỡ bàn/lọc kết quả + thống kê; đấu lại tạo bản ghi mới; thắng rồi ngắt kết nối chỉ lưu một lần; đối thủ xoá tài khoản hiển thị ẩn danh; **ván 4×4–8×8 cũ vẫn nằm trong DB nhưng bị ẩn khỏi danh sách, chi tiết và thống kê**.
 
 ---
 
-## 52 kịch bản kiểm thử thủ công
+## 60 kịch bản kiểm thử thủ công
 
 | # | Kịch bản | Cách làm | Kết quả mong đợi |
 | --- | --- | --- | --- |
@@ -321,7 +377,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 29 | Hết giờ bàn ∞ | Chạy `TURN_MS=2000 npm start`, chơi online ∞, không đánh | Sau ~2 giây máy chủ tự đánh ô trống hợp lệ, ván tiếp tục, không bị xử thua; khi chạy thật là 45 giây |
 | 30 | ∞: F5 và đấu lại | Hai cửa sổ phòng ∞, đánh vài nước, F5, đấu lại | F5 khôi phục đủ nước, vùng, nước cuối và lượt; đấu lại reset bàn ∞ và đổi người đi trước |
 | 31 | Bàn phím & i18n ∞ | Dùng Tab/mũi tên tới sát biên vùng; đổi sang English | Không lọt ra ngoài vùng; nhãn đọc đúng toạ độ; tên cỡ bàn, luật thắng, bộ lọc điểm đổi sang tiếng Anh |
-| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v7` xoá cache cũ, app shell và module AI/∞ mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
+| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v9` xoá cache cũ, app shell và module AI/∞ mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
 | 33 | ∞: nhập môn & điều khiển | Chọn ∞, dùng phím mũi tên + Enter; kéo chuột; cuộn/chụm; bấm ±, về giữa, tới nước vừa đánh | Ô (0,0) ở giữa; con trỏ luôn hiện; kéo >6px không đặt quân; zoom trong khoảng 24–96px; nút về giữa/tới nước vừa đánh hoạt động; không lỗi console |
 | 34 | ∞: vùng tự mở rộng | Đánh ra sát biên rồi ra ngoài vùng cũ | Vùng trắng mở thêm 2 ô quanh quân xa nhất có hoạt ảnh ~250ms, không co lại; ô ngoài vùng bị làm mờ và bấm vào chỉ nhấp nháy cảnh báo |
 | 35 | ∞: thắng và overline | Tạo 5 quân ngang/dọc/chéo ở toạ độ âm; tạo chuỗi 6 quân | Thắng đúng, sợi len nối trọn chuỗi (kể cả >5), thẻ kết quả đúng người thắng, có thông báo cho trình đọc màn hình |
@@ -342,6 +398,14 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 50 | Link sai / đầy / đóng | Mở `?room=ZZZZZ`, link phòng đã đóng, phòng đủ 2 người | Báo rõ lỗi tương ứng, tự bỏ `?room` khỏi URL, có nút về trang chủ; không kẹt ở màn hình trống |
 | 51 | Offline với tài khoản | Đăng nhập rồi chặn mạng, tải lại trang, chơi AI/2 người; mở thử Lịch sử | App vẫn vào trang chủ và chơi AI/2 người bình thường; Lịch sử báo lỗi mạng rõ ràng; khi có mạng lại thì tài khoản/lịch sử hoạt động |
 | 52 | EN + 360px cho màn tài khoản | Đổi sang English, thu cửa sổ 360px, mở Đăng nhập/Hồ sơ/Lịch sử/Replay | Toàn bộ nhãn, lỗi, nút, bộ lọc, replay đổi tiếng Anh; không có thanh cuộn ngang; nút bấm được, bảng không tràn |
+| 53 | Đăng ký có email | Bật mail, đăng ký kèm email, mở hộp thư (hoặc terminal `console`) | Nhận thư xác thực; bấm link mở màn xác thực; token biến mất khỏi thanh địa chỉ; hồ sơ hiện email đã che + huy hiệu đã xác thực |
+| 54 | Banner xác thực | Đăng ký chưa bấm link, về trang chủ | Banner nhắc xác thực; bấm bỏ qua thì banner ẩn 7 ngày; bấm "Gửi lại" có cooldown 60 giây |
+| 55 | Quên mật khẩu | Đăng xuất, bấm **Quên mật khẩu?**, nhập email đã xác thực | Luôn báo "nếu email tồn tại..."; nhận thư; link mở màn đặt lại, kiểm tra token trước, đếm ngược gửi lại 60 giây |
+| 56 | Email lạ / chưa xác thực | Lặp lại với email không tồn tại và email chưa xác thực | Phản hồi và thời gian giống hệt, không nhận thư, không lộ tài khoản |
+| 57 | Token dùng một lần và hết hạn | Đặt lại mật khẩu, mở lại link cũ; thử link quá hạn | Báo token không hợp lệ/hết hạn; không đổi được mật khẩu; phiên cũ bị thu hồi sau khi đổi thành công |
+| 58 | Đổi email | Hồ sơ → nhập email mới + mật khẩu hiện tại | Email cũ vẫn hiển thị và vẫn nhận thư khôi phục; dòng "chờ xác thực" hiện email mới đã che; email cũ nhận thư thông báo; xác thực xong email mới thay thế |
+| 59 | Server đang ngủ | Dừng server, tải lại app / mở link `#reset=` hoặc `#verify=` | Hiện "đang đánh thức server", thử lại tăng dần tới ~90 giây; không bị đăng xuất khi lỗi mạng; server trả `{user:null}` mới về khách |
+| 60 | Xoá tài khoản và lịch sử | Chơi online có tài khoản, đối thủ mở lịch sử; xoá tài khoản | Cả hai phía thấy "Người chơi đã xóa"; không còn tên cũ trong DB; email/token bị xoá; không đăng nhập/khôi phục được |
 
 Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -363,7 +427,10 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 - **Lưu ván đúng một lần.** `finishRound` đặt cờ `matchSaved` trước khi ghi bất đồng bộ; thắng + ngắt kết nối gần như đồng thời không tạo hai bản ghi. Ghi `matches` và cộng `user_stats` trong **một transaction**; lỗi DB chỉ log, không ném ra ngoài.
 - **Mật khẩu và phiên tách biệt.** Mật khẩu dùng scrypt với salt riêng từng người; token phiên là 32 byte ngẫu nhiên, chỉ SHA-256 của token được lưu. Đăng nhập sai luôn trả cùng một lỗi và vẫn chạy scrypt giả để giảm lộ thông tin thời gian. Đổi mật khẩu thu hồi các phiên khác; xoá tài khoản thu hồi tất cả.
 - **Xoá tài khoản là xoá mềm.** Bản ghi `users` được giữ để lịch sử không mồ côi; username/display_name bị ẩn danh và API lịch sử trả "Người chơi đã xóa" cho cả hai phía, tránh lộ tên cũ.
-- **Không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng; không có email/khôi phục mật khẩu tự động trong phạm vi phiên bản này.
+- **Không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng.
+- **Email là tuỳ chọn, không phải đăng nhập.** Không có đăng nhập bằng email/OAuth. Email chỉ xác thực và khôi phục mật khẩu; khi chưa cấu hình mail, mọi tính năng cũ vẫn chạy và email đăng ký là tuỳ chọn. Link trong thư luôn dùng `PUBLIC_URL`, token chỉ nằm trong fragment và DB chỉ lưu SHA-256.
+- **Đổi mật khẩu và xoá tài khoản vẫn cần mật khẩu hiện tại.** Quên mật khẩu dùng link email dùng một lần; tài khoản không có email đã xác thực được hỗ trợ bằng script cục bộ `npm run admin:reset-password`.
+- **Lỗi mạng không đăng xuất.** `/api/auth/me` lỗi mạng/timeout được thử lại tới ~90 giây và giữ nguyên trạng thái đăng nhập; chỉ phản hồi rõ ràng `401`/`{user:null}` mới chuyển về khách.
 - **Không dùng ảnh/font nhân vật có bản quyền.** Font tải từ Google Fonts, mọi hình khác là SVG nội bộ; khi offline, font tự fallback hệ thống.
 
 ---
@@ -388,6 +455,12 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 | `429 RATE_LIMITED` | Đăng ký/đăng nhập quá nhiều | Chờ theo `retryAfter`; kiểm tra `TRUST_PROXY` nếu đứng sau proxy để IP không bị gộp |
 | Lịch sử trống | Đang chơi bằng khách, hoặc ván chưa kết thúc | Đăng nhập tài khoản trước khi chơi; lịch sử chỉ lưu ván online đã kết thúc và có ít nhất một tài khoản |
 | Migration lỗi khi khởi động | Database mất kết nối hoặc tài khoản DB thiếu quyền tạo bảng | Chạy `npm run migrate` để xem lỗi; cấp quyền DDL cho user database |
+| Không thấy nút quên mật khẩu/ô email | `mailEnabled:false` | Kiểm tra `GET /api/config`; xem cảnh báo `mail:` lúc khởi động; đặt `PUBLIC_URL` https + `MAIL_PROVIDER`/`MAIL_FROM` hợp lệ |
+| Link trong thư trỏ sai domain | `PUBLIC_URL` sai hoặc thiếu | Link **không** lấy từ Host; đặt `PUBLIC_URL` đúng URL công khai rồi khởi động lại |
+| Gửi thư lỗi 401/403 | Sai App Password/SMTP key hoặc `MAIL_FROM` không khớp tài khoản | Kiểm tra `SMTP_USER`/`SMTP_PASS`; Gmail cần App Password; Brevo/Resend cần xác minh người gửi/domain |
+| Không nhận thư đặt lại | Email chưa xác thực hoặc bị rate limit | Xác thực email trước; thử lại sau 1 giờ; dùng `npm run admin:reset-password` nếu không có email |
+| Thư vào spam | Người gửi/domain chưa xác minh | Xác minh domain (SPF/DKIM) ở nhà cung cấp; dùng `MAIL_FROM` cùng domain |
+| Đang đăng nhập bỗng thành khách khi server ngủ | Bản cũ chưa có retry | Bản này giữ đăng nhập tới ~90 giây khi lỗi mạng; kiểm tra service worker đã nhận cache v9 |
 
 ---
 

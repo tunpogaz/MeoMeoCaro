@@ -2895,3 +2895,91 @@ body.reduce-motion *::after {
 body.reduce-motion .zzz {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Email / khoi phuc mat khau
+   --------------------------------------------------------------------------- */
+.link-btn {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink, #3b2f2f);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:hover,
+.link-btn:focus-visible {
+  color: #c65f33;
+}
+
+.email-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px dashed #e8a06b;
+  border-radius: 16px;
+  background: #fff7e8;
+}
+
+.email-banner-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.email-banner-text {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.email-banner-close {
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+
+.email-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.email-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.email-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1.5px solid currentColor;
+}
+
+.email-badge.verified {
+  color: #2f7d4f;
+  background: #e9f7ee;
+}
+
+.email-badge.pending {
+  color: #a1601f;
+  background: #fff1dc;
+}
+
+.reset-state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#reset-loading {
+  text-align: center;
+}
