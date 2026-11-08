@@ -1,5 +1,7 @@
 # Báo cáo hiện trạng — Meo Meo Caro
 
+Phần dưới là nhật ký cộng dồn, xem mục cuối cùng để biết hiện trạng
+
 Ngày rà soát: 2026-11-05. Phạm vi: toàn bộ mã nguồn, test, tài liệu và cấu hình triển khai tại thời điểm bàn giao. Báo cáo này chỉ dựa trên đọc mã và chạy thử; chưa sửa mã nguồn.
 
 ## 1. Tóm tắt 10 dòng
@@ -239,3 +241,117 @@ Phạm vi: đọc lại mã hiện tại, chạy `npm test`, chạy server thậ
 - Server đã có `room.moveLog` cho cả hai cỡ bàn và giới hạn 2000 nước; có thể dùng làm nguồn sự thật duy nhất cho undo.
 - `state.ai.token` và `aiClient.cancel()` đã có sẵn cơ chế chống kết quả AI cũ; chỉ cần gọi đúng chỗ.
 - `publicState(room, youKey)` đã nhận danh tính người xem, thuận tiện để trả `isYou`, số lượt xin còn lại và cooldown riêng.
+
+---
+
+## Nâng cấp âm thanh, nhạc nền và hiệu ứng thắng/thua (2026-11-08)
+
+Sao lưu trước khi sửa: tag `backup-before-audio` (commit `b39de41`) và bản nén
+`/Users/tuanphong/Documents/MeoMeoCaro_backup_before_audio.tar.gz` (289 KB).
+
+### Pha 0 — rà soát read-only bản cũ
+
+Ảnh chụp `public/js/audio.js` tại tag dài 241 dòng; toàn bộ âm thanh đã là Web Audio,
+không có file ngoài. Các điểm cần thay:
+
+| Hành vi cũ | Bằng chứng tại tag | Hệ quả |
+| --- | --- | --- |
+| Một `AudioContext` toàn cục, tạo trong `ensureContext` | `audio.js:6,13-26` | Không có bus/limiter, mọi tiếng đấu trực tiếp vào `destination` |
+| `unlock()` bật cờ trước khi context tồn tại | `audio.js:29-41` | Trước tương tác vẫn có thể ghi nhận "đã mở"; không có buffer im lặng cho iOS |
+| Mọi lần đặt quân đều gọi cùng một `meow()` | `audio.js:70-103`; `main.js:2505,2523,2868` | Mèo cam/xám nghe giống nhau, không phân biệt quân mình/đối thủ |
+| Kết quả 2 người cùng máy luôn phát `win` (kể cả hòa có `draw`) | `main.js:2566-2582` | Không có góc nhìn; hòa không có hiệu ứng ngủ |
+| Kết quả online đã có góc nhìn nhưng khóa chỉ là `id:board:winner` | `main.js:3638-3656` | Ván mới trùng thế cờ có thể bị coi là cũ; thiếu vòng/số nước |
+| Không có âm lượng; chỉ có hai công tắc `sound`/`music` | `storage.js:103-127`; `index.html:793-805` | Không chỉnh được nhạc to/nhỏ; `music` mặc định tắt |
+| Nhạc là vòng 8 nốt cố định, lặp mỗi 1900 ms | `audio.js:191-216` | Không có cảm giác menu/ván, không fade, không nhường chỗ khi có kết quả |
+| Không giới hạn voice, không ưu tiên, không log kiểm thử | `audio.js:174-186, 238-241` | Đặt nhanh có thể chồng tiếng; không có bằng chứng để kiểm thử tự động |
+| Ẩn tab chỉ dừng/bật lại timer nhạc | `audio.js:238-241` | SFX vẫn có thể phát khi tab ẩn; context không được treo |
+
+Các nhóm gọi cũ: đặt quân (`main.js:2505,2523,2868`), kết quả local/online
+(`2566-2582`, `3638-3656`), đi lại (`2281`, `3550`), từ chối đi lại (`3556`),
+vào phòng (`628`, `2325`, `2353`, `2815`, `3603`, `3617`, `3731`),
+lỗi (`1079`, `1109`, `2251`, `2458-2500`, `2727`, `3102-3187`, `3416`),
+giao diện (`1689`, `1871`, `4367`, `4375`), biểu cảm (`3666`, `3685`).
+
+Rủi ro chính khi nâng cấp: âm thanh là kênh phụ nên không được làm hỏng luồng game;
+phải giữ nguyên sự kiện Socket.IO, `localStorage` cũ, chế độ offline và chế độ giảm
+chuyển động. Vì vậy logic quyết định âm thanh được tách sang module thuần để test Node,
+còn engine/sfx/music chỉ lo phát.
+
+### Thay đổi
+
+| File | Vai trò |
+| --- | --- |
+| `public/js/audio-logic.js` | Thuần: mặc định âm lượng, làm tròn/kẹp, đường cong, migrate khóa cũ, scene theo màn hình, góc nhìn kết quả, `buildBar` 8 ô nhịp, khóa hiệu ứng kết quả |
+| `public/js/audio-engine.js` | Một `AudioContext` lười, master → compressor → đích, bus SFX/nhạc, convolver dùng chung, giới hạn 16 voice có ưu tiên, `stats()`, suspend/resume |
+| `public/js/sfx.js` | Tiếng mèo cam/xám khác nhau, biến thiên có seed, quân mình rõ hơn quân đối thủ và pan nhẹ, đúng một tiếng mỗi nước |
+| `public/js/music.js` | Nhịp 92 BPM, 4/4, pentatonic, vòng I–vi–IV–V 8 ô nhịp, scheduler 25 ms/nhìn trước 120 ms, fade menu↔ván, duck trước kết quả |
+| `public/js/audio.js` | Facade duy nhất cho phần còn lại; `place`, `result`, `setScene`, âm lượng, nghe thử, log kiểm thử khi `window.__MMC_TEST__` |
+| `public/js/main.js` | Gọi `place`/`result`, khóa hiệu ứng một lần mỗi ván, góc nhìn online/AI/local/replay, không phát lại sau F5 |
+| `public/js/ui.js`, `public/css/style.css`, `public/assets/cats.js` | Hiệu ứng thắng (glow), thua (mưa, bàn xám), hòa (Zzz), tôn trọng `prefers-reduced-motion` |
+| `public/js/storage.js`, `public/index.html`, `public/js/i18n.js` | Ba thanh âm lượng 80/40/80, migrate khóa cũ, nhãn VI/EN, `aria-valuetext`, nút nghe thử |
+| `public/sw.js` | Cache `meo-meo-caro-v11` kèm các module âm thanh mới |
+| `test/audio.test.mjs` | 26 test Node với engine/timer giả |
+
+Quyết định đáng chú ý:
+
+- Nhạc và tiếng mèo đều tổng hợp, không có mp3/wav; không dùng giai điệu quen thuộc.
+- Âm lượng dùng đường cong bình phương và `setTargetAtTime` để đổi ngay, không bị "pop".
+- Kết quả online/AI/2 người/replay đều đi qua `resultPerspective`; khóa
+  `resultEffectKey` gồm phòng, vòng, số nước, người thắng nên mỗi ván chỉ phát một lần.
+- Khóa `localStorage` cũ được đọc qua `normalizeAudioSettings` (nhận cả
+  `masterVolume`, `volume`, `musicVolume`, `sfxVolume`), sau đó ghi lại theo khóa mới.
+- Tab ẩn thì treo context; hiện lại thì phục hồi mà không phát lại kết quả cũ.
+
+### Lỗi tìm thấy trong quá trình kiểm thử trình duyệt
+
+| Lỗi | Nguyên nhân | Sửa và test |
+| --- | --- | --- |
+| Nhạc menu không bắt đầu dù đã chạm lần đầu; `music.timer` luôn `false` | Gán `this.setIntervalFn = globalThis.setInterval` rồi gọi như method → Chrome ném `Illegal invocation` | Bọc arrow trong `music.js`; thêm test hồi quy "timer mặc định không phụ thuộc `this`" trong `test/audio.test.mjs` |
+
+### Kiểm chứng
+
+Chạy thật ngày 2026-11-08:
+
+- `npm test`: **152/152 đạt**, không suite nào lỗi — ai 37, wake 8, server 37,
+  auth 15, history 8, password-reset 21, audio 26.
+- `npm run test:audio`: **26/26 đạt** (logic thuần, engine giả, SFX, nhạc, facade,
+  storage).
+- Trình duyệt Chrome headless, 2 browser context độc lập, đặt `window.__MMC_TEST__`
+  trước khi tải và đọc `__MMC_AUDIO_LOG`: **18/18 kịch bản đạt**:
+  - Log rỗng trước tương tác; chạm lần đầu mở khóa và bật nhạc menu.
+  - Slider mặc định 80/40/80, `aria-valuetext` đúng; nghe thử 6 mục; mức âm
+    lượng áp dụng ngay và còn sau khi tải lại.
+  - Tắt/bật âm thanh dừng và phục hồi nhạc/SFX; đặt quân đúng bên; đi lại không
+    phát nhầm kết quả.
+  - AI thắng/thua: đúng một tiếng, confetti/glow hoặc mưa/bàn xám, chữ đúng.
+  - 2 người cùng máy hòa: đúng một tiếng `draw`, có Zzz, không có tiếng thua.
+  - Online 2 trình duyệt: mỗi bên nghe đủ số nước, quân mình/đối thủ khác nhau,
+    người thắng nghe `win`, người thua nghe `lose`, mỗi hiệu ứng đúng một lần.
+  - F5 khi ván đã xong: khôi phục bàn/kết quả nhưng không phát lại âm thanh.
+  - Đối thủ mất kết nối quá hạn: người ở lại nghe `win`, chữ "mất kết nối",
+    không có confetti; phòng đóng thì tự về trang chủ.
+  - Giảm chuyển động: không mưa/confetti/Zzz nhưng vẫn phát `lose`.
+  - 360 px và English: không tràn ngang; thiếu Web Audio: không lỗi, UI vẫn chạy.
+  - PWA: cache `meo-meo-caro-v11`, chơi offline với máy được; không lỗi console.
+
+Một số lần chạy đầu có lỗi do chính script QA, không phải sản phẩm: chờ cuộn mượt
+của thẻ kết quả chưa xong nên tọa độ bấm bị lệch; kịch bản online giả định A luôn
+đi trước trong khi server chọn ngẫu nhiên; phòng tự đóng sau khi đối thủ rời nên
+`#game-back` đã ẩn; lỗi mạng `ERR_INTERNET_DISCONNECTED` là chủ ý của bài offline.
+Script được sửa để chờ cuộn ổn định, đếm số nước thực tế, chấp nhận trạng thái đã
+về trang chủ và bỏ qua lỗi mạng khi ngắt mạng. Lỗi sản phẩm duy nhất phát hiện và
+đã sửa trong đợt này là `Illegal invocation` của timer nhạc, có test hồi quy.
+
+Sau khi chạy, `data/meo.db` được khôi phục nguyên trạng (122880 byte); không còn
+tiến trình Chrome/Node của QA. Toàn bộ script, profile, ảnh chụp và DB tạm nằm
+ngoài repo và đã được xoá.
+
+### Giới hạn
+
+- Chất lượng âm thanh là chiptune tổng hợp, không phải nhạc thu; mục tiêu là nhẹ
+  và không tài sản bên thứ ba.
+- iOS vẫn cần một lần chạm để mở khóa; công tắc im lặng của iPhone có thể chặn
+  toàn bộ Web Audio dù đã bật trong game.
+- Trình duyệt không hỗ trợ Web Audio thì im lặng hoàn toàn; mọi thông tin vẫn có
+  ở chữ, màu và `aria-live`.
+- Phòng online nằm trong RAM; âm thanh không thay đổi giới hạn này.

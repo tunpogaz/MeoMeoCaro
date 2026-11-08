@@ -2,6 +2,7 @@
  * Boc localStorage an toan: neu trinh duyet tat localStorage (che do rieng tu),
  * moi thu van chay voi bo nho tam trong phien.
  */
+import { AUDIO_DEFAULTS, normalizeAudioSettings } from './audio-logic.js';
 
 const PREFIX = 'mmc.';
 const memory = new Map();
@@ -101,28 +102,45 @@ export function saveProfile(profile) {
 // Settings
 // ---------------------------------------------------------------------------
 const DEFAULT_SETTINGS = {
-  sound: true,
-  music: false,
+  sound: AUDIO_DEFAULTS.sound,
+  music: AUDIO_DEFAULTS.music,
+  volumeMaster: AUDIO_DEFAULTS.volumeMaster,
+  volumeMusic: AUDIO_DEFAULTS.volumeMusic,
+  volumeSfx: AUDIO_DEFAULTS.volumeSfx,
   lang: 'vi',
   reduceMotion: false,
   boardSize: 3,
 };
 
+function audioFromSettings(saved) {
+  const audio = normalizeAudioSettings(saved);
+  const hasLegacyVolumes =
+    saved.masterVolume !== undefined ||
+    saved.volume !== undefined ||
+    saved.musicVolume !== undefined ||
+    saved.sfxVolume !== undefined;
+  return { audio, hasLegacyVolumes };
+}
+
 export function loadSettings() {
   const saved = getJSON(`${PREFIX}settings`, {});
-  return {
-    sound: typeof saved.sound === 'boolean' ? saved.sound : DEFAULT_SETTINGS.sound,
-    music: typeof saved.music === 'boolean' ? saved.music : DEFAULT_SETTINGS.music,
+  const { audio, hasLegacyVolumes } = audioFromSettings(saved);
+  const settings = {
+    ...audio,
     lang: saved.lang === 'en' ? 'en' : 'vi',
     reduceMotion: saved.reduceMotion === true,
     boardSize: validSize(saved.boardSize) ? saved.boardSize : DEFAULT_SETTINGS.boardSize,
   };
+  if (hasLegacyVolumes) {
+    saveSettings(settings);
+  }
+  return settings;
 }
 
 export function saveSettings(settings) {
+  const { audio } = audioFromSettings(settings);
   setJSON(`${PREFIX}settings`, {
-    sound: settings.sound !== false,
-    music: settings.music === true,
+    ...audio,
     lang: settings.lang === 'en' ? 'en' : 'vi',
     reduceMotion: settings.reduceMotion === true,
     boardSize: validSize(settings.boardSize) ? settings.boardSize : DEFAULT_SETTINGS.boardSize,

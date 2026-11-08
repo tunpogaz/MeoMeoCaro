@@ -1,241 +1,316 @@
 /**
- * Am thanh tao bang Web Audio API, khong can file mp3.
- * AudioContext chi duoc tao sau lan cham dau tien cua nguoi dung.
+ * Cua vao duy nhat cho am thanh cua ung dung.
+ * Giu nguyen cac ham cu (unlock/setEnabled/play/...) de khong vo code,
+ * dong thoi them canh (scene), am luong va nghe thu.
  */
+import { AudioEngine } from './audio-engine.js';
+import { MusicPlayer } from './music.js';
+import { playSfx } from './sfx.js';
+import { clampVolume, musicSceneFor } from './audio-logic.js';
 
-let ctx = null;
-let enabled = true;
-let unlocked = false;
-let musicEnabled = false;
-let musicTimer = null;
-let musicStep = 0;
+const SILENT_UNLOCK = { dur: 0.012, freq: 440, type: 'sine', gain: 0.0001 };
 
-function ensureContext() {
-  if (ctx) {
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    return ctx;
+export function createAudioFacade(options = {}) {
+  const engine = options.engine || new AudioEngine();
+  const windowRef = options.windowRef || (typeof window !== 'undefined' ? window : null);
+  const documentRef =
+    options.documentRef ?? (typeof document !== 'undefined' ? document : null);
+
+  const log = (event) => {
+    if (!windowRef?.__MMC_TEST__) return;
+    const list = windowRef.__MMC_AUDIO_LOG || (windowRef.__MMC_AUDIO_LOG = []);
+    const t = windowRef.performance?.now?.() ?? Date.now();
+    list.push({ t, ...event });
+  };
+
+  const logActive = (event) => {
+    if (unlocked) log(event);
+  };
+
+  const music =
+    options.music ||
+    new MusicPlayer(engine, { onLog: (event) => log(event) });
+
+  let enabled = options.sound !== false;
+  let musicEnabled = options.music !== false;
+  let unlocked = false;
+  let scene = 'menu';
+  let previewMusic = false;
+
+  function startMenuMusic(fadeInMs = 1200) {
+    if (!unlocked || !enabled || !engine.ready) return false;
+    if (!musicEnabled && !previewMusic) return false;
+    if (scene !== 'menu' && !previewMusic) return false;
+    return music.start({ fadeInMs });
   }
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  try {
-    ctx = new Ctx();
-  } catch {
-    ctx = null;
+
+  function unlock() {
+    if (!unlocked) {
+      const ok = engine.unlock();
+      unlocked = ok;
+      log({ type: 'unlock', ok });
+      if (ok) {
+        // iOS Safari can mot buffer that su trong chinh cu chi nguoi dung.
+        try {
+          engine.tone({ ...SILENT_UNLOCK, start: engine.now() });
+        } catch {
+          /* am thanh phu */
+        }
+      }
+    } else {
+      engine.unlock();
+    }
+    if (unlocked && enabled) startMenuMusic(1200);
+    return unlocked;
   }
-  return ctx;
+
+  function play(name, opts = {}) {
+    if (!enabled || !unlocked || !engine.ready) return false;
+    const ok = playSfx(engine, name, opts);
+    if (ok) {
+      log({
+        type: 'sfx',
+        name,
+        symbol: opts.symbol || null,
+        mine: opts.mine !== false,
+        mode: opts.mode || null,
+        preview: opts.preview === true,
+      });
+    }
+    return ok;
+  }
+
+  function place(opts = {}) {
+    return play('place', opts);
+  }
+
+  function result(perspective, opts = {}) {
+    if (perspective !== 'win' && perspective !== 'lose' && perspective !== 'draw') {
+      return false;
+    }
+    if (music.isRunning()) music.duck(1500);
+    return play(perspective, opts);
+  }
+
+  function setEnabled(value) {
+    enabled = value !== false;
+    if (!enabled) {
+      music.stop({ fadeMs: 180 });
+      engine.suspend();
+    } else if (unlocked) {
+      engine.unlock();
+      engine.resume().catch(() => {});
+      startMenuMusic(600);
+    }
+    logActive({ type: 'power', enabled });
+  }
+
+  function setMusicEnabled(value) {
+    musicEnabled = value === true;
+    if (!musicEnabled) {
+      previewMusic = false;
+      music.stop({ fadeMs: 500 });
+    } else if (unlocked && enabled) {
+      startMenuMusic(900);
+    }
+    logActive({ type: 'musicEnabled', enabled: musicEnabled });
+  }
+
+  function setScene(screen) {
+    const next = musicSceneFor(screen);
+    const changed = next !== scene;
+    scene = next;
+    if (enabled && unlocked) {
+      if (next === 'menu') {
+        startMenuMusic(1200);
+      } else if (changed || music.isRunning() || previewMusic) {
+        previewMusic = false;
+        music.stop({ fadeMs: 700 });
+      }
+    }
+    logActive({ type: 'musicScene', scene: next, screen });
+    return next;
+  }
+
+  function setVolumes(next = {}) {
+    const applied = engine.setVolumes({
+      master: next.master ?? next.volumeMaster,
+      music: next.music ?? next.volumeMusic,
+      sfx: next.sfx ?? next.volumeSfx,
+    });
+    logActive({ type: 'volumes', ...applied });
+    return applied;
+  }
+
+  function toggleMusicPreview() {
+    unlock();
+    if (!enabled || !unlocked || !engine.ready) return false;
+    if (music.isRunning()) {
+      previewMusic = false;
+      music.stop({ fadeMs: 250 });
+      return false;
+    }
+    previewMusic = true;
+    const ok = music.start({ fadeInMs: 300 });
+    log({ type: 'preview', name: 'music', active: ok });
+    return ok;
+  }
+
+  function playPreview(name) {
+    if (name === 'music') return toggleMusicPreview();
+    unlock();
+    if (!enabled || !unlocked || !engine.ready) return false;
+    if (name === 'orange' || name === 'gray') {
+      const ok = play('place', {
+        symbol: name === 'gray' ? 'B' : 'A',
+        mine: true,
+        mode: 'preview',
+        preview: true,
+      });
+      log({ type: 'preview', name, active: ok });
+      return ok;
+    }
+    const ok = play(name, { preview: true });
+    log({ type: 'preview', name, active: ok });
+    return ok;
+  }
+
+  function suspend() {
+    if (music.isRunning()) music.pause();
+    engine.suspend();
+    logActive({ type: 'suspend' });
+  }
+
+  function resume() {
+    if (documentRef?.hidden) return;
+    engine.unlock();
+    engine.resume();
+    if (
+      enabled &&
+      unlocked &&
+      (musicEnabled || previewMusic) &&
+      (scene === 'menu' || previewMusic)
+    ) {
+      music.resume();
+    }
+    logActive({ type: 'resume' });
+  }
+
+  if (documentRef?.addEventListener) {
+    documentRef.addEventListener('visibilitychange', () => {
+      if (documentRef.hidden) suspend();
+      else resume();
+    });
+  }
+
+  function state() {
+    return {
+      enabled,
+      musicEnabled,
+      unlocked,
+      scene,
+      previewMusic,
+      volumes: { ...engine.volumes },
+      engine: engine.stats(),
+      music: music.stats(),
+    };
+  }
+
+  return {
+    engine,
+    music,
+    unlock,
+    play,
+    place,
+    result,
+    setEnabled,
+    setMusicEnabled,
+    setScene,
+    setVolumes,
+    playPreview,
+    toggleMusicPreview,
+    suspend,
+    resume,
+    isEnabled: () => enabled,
+    isMusicEnabled: () => musicEnabled,
+    isUnlocked: () => unlocked,
+    currentScene: () => scene,
+    state,
+  };
 }
 
-/** Goi tu lan tuong tac dau tien (pointerdown/keydown) de mo khoa am thanh. */
+let singleton = null;
+
+function getFacade() {
+  if (singleton) return singleton;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  singleton = createAudioFacade({
+    engine: new AudioEngine(),
+    windowRef: window,
+    documentRef: document,
+  });
+  return singleton;
+}
+
+/** Goi tu lan tuong tac dau tien de mo khoa am thanh. */
 export function unlock() {
-  unlocked = true;
-  const context = ensureContext();
-  if (!context) return;
-  const afterResume = () => {
-    if (musicEnabled) startMusicTimer();
-  };
-  if (context.state === 'suspended') {
-    context.resume().then(afterResume).catch(() => {});
-  } else {
-    afterResume();
-  }
+  return getFacade()?.unlock() ?? false;
+}
+
+export function play(name, opts = {}) {
+  return getFacade()?.play(name, opts) ?? false;
+}
+
+export function place(opts = {}) {
+  return getFacade()?.place(opts) ?? false;
+}
+
+export function result(perspective, opts = {}) {
+  return getFacade()?.result(perspective, opts) ?? false;
 }
 
 export function setEnabled(value) {
-  enabled = value !== false;
+  getFacade()?.setEnabled(value);
 }
 
 export function isEnabled() {
-  return enabled;
-}
-
-function envelope(gain, start, peak, attack, decay) {
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), start + attack);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + attack + decay);
-}
-
-function tone(freq, start, duration, type = 'sine', volume = 0.12, endFreq = null) {
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, start);
-  if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, start + duration);
-  envelope(gain, start, volume, Math.min(0.03, duration * 0.3), duration);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(start);
-  osc.stop(start + duration + 0.05);
-}
-
-function meow() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-  const lfo = ctx.createOscillator();
-  const lfoGain = ctx.createGain();
-
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(640, now);
-  osc.frequency.exponentialRampToValueAtTime(1040, now + 0.13);
-  osc.frequency.exponentialRampToValueAtTime(470, now + 0.44);
-
-  lfo.type = 'sine';
-  lfo.frequency.setValueAtTime(17, now);
-  lfoGain.gain.setValueAtTime(28, now);
-  lfo.connect(lfoGain).connect(osc.frequency);
-
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2100, now);
-  filter.Q.setValueAtTime(4, now);
-
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.2, now + 0.04);
-  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.22);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-
-  osc.connect(filter).connect(gain).connect(ctx.destination);
-  osc.start(now);
-  lfo.start(now);
-  osc.stop(now + 0.55);
-  lfo.stop(now + 0.55);
-}
-
-function click() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(320, now, 0.07, 'triangle', 0.07, 190);
-}
-
-function winSound() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-    tone(freq, now + i * 0.11, 0.24, 'triangle', 0.11);
-  });
-  tone(1567.98, now + 0.44, 0.32, 'sine', 0.06);
-}
-
-function loseSound() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  [392, 329.63, 261.63].forEach((freq, i) => {
-    tone(freq, now + i * 0.14, 0.28, 'sine', 0.09);
-  });
-}
-
-function drawSound() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(523.25, now, 0.24, 'sine', 0.08);
-  tone(493.88, now + 0.2, 0.34, 'sine', 0.08);
-}
-
-function errorSound() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(150, now, 0.13, 'square', 0.05, 120);
-}
-
-function popSound() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(720, now, 0.1, 'sine', 0.09, 1180);
-}
-
-function chime() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(659.25, now, 0.18, 'triangle', 0.08);
-  tone(880, now + 0.1, 0.24, 'triangle', 0.07);
-}
-
-function undoWhoosh() {
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  tone(660, now, 0.16, 'sine', 0.07, 430);
-  tone(520, now + 0.07, 0.18, 'triangle', 0.05, 340);
-  tone(300, now + 0.15, 0.12, 'sine', 0.04);
-}
-
-const PLAYERS = {
-  meow,
-  click,
-  win: winSound,
-  lose: loseSound,
-  draw: drawSound,
-  error: errorSound,
-  emote: popSound,
-  join: chime,
-  undo: undoWhoosh,
-};
-
-export function play(name) {
-  if (!enabled || !unlocked) return;
-  const context = ensureContext();
-  if (!context || context.state !== 'running') return;
-  const fn = PLAYERS[name];
-  if (fn) {
-    try {
-      fn();
-    } catch {
-      /* am thanh la phu, khong duoc lam vo game */
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Nhac nen nhe (mac dinh tat)
-// ---------------------------------------------------------------------------
-const MUSIC_NOTES = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63, 293.66, 349.23];
-
-function scheduleMusicStep() {
-  if (!ctx || !musicEnabled) return;
-  const now = ctx.currentTime;
-  const freq = MUSIC_NOTES[musicStep % MUSIC_NOTES.length];
-  musicStep += 1;
-
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(freq, now);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.026, now + 0.25);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + 1.9);
-}
-
-function startMusicTimer() {
-  stopMusicTimer();
-  if (!ctx) return;
-  scheduleMusicStep();
-  musicTimer = window.setInterval(scheduleMusicStep, 1900);
-}
-
-function stopMusicTimer() {
-  if (musicTimer !== null) {
-    window.clearInterval(musicTimer);
-    musicTimer = null;
-  }
+  return getFacade()?.isEnabled() ?? false;
 }
 
 export function setMusicEnabled(value) {
-  musicEnabled = value === true;
-  if (musicEnabled && unlocked && ctx && ctx.state === 'running') {
-    startMusicTimer();
-  } else if (!musicEnabled) {
-    stopMusicTimer();
-  }
+  getFacade()?.setMusicEnabled(value);
 }
 
 export function isMusicEnabled() {
-  return musicEnabled;
+  return getFacade()?.isMusicEnabled() ?? false;
 }
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stopMusicTimer();
-  else if (musicEnabled && ctx && ctx.state === 'running') startMusicTimer();
-});
+export function setScene(screen) {
+  getFacade()?.setScene(screen);
+}
+
+export function setVolumes(next = {}) {
+  return getFacade()?.setVolumes(next) ?? null;
+}
+
+export function playPreview(name) {
+  return getFacade()?.playPreview(name) ?? false;
+}
+
+export function toggleMusicPreview() {
+  return getFacade()?.toggleMusicPreview() ?? false;
+}
+
+export function suspend() {
+  getFacade()?.suspend();
+}
+
+export function resume() {
+  getFacade()?.resume();
+}
+
+export function audioState() {
+  return getFacade()?.state() ?? null;
+}
+
+export { clampVolume };

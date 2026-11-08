@@ -27,6 +27,7 @@ import {
   AVATAR_KEYS,
 } from '../assets/cats.js';
 import * as audio from './audio.js';
+import { clampVolume, resultEffectKey, resultPerspective } from './audio-logic.js';
 import {
   initBoard,
   setBoardSize,
@@ -44,6 +45,8 @@ import {
   showEmoteBubble,
   clearEmoteBubble,
   showSleepZ,
+  showResultVisual,
+  clearResultVisual,
   updateTimer,
   animateRemovedCats,
   hideToast,
@@ -322,7 +325,12 @@ function writeFlag(key, value) {
 }
 
 function prefersReducedMotion() {
-  return state.settings.reduceMotion || document.body.classList.contains('reduce-motion');
+  if (state.settings.reduceMotion || document.body.classList.contains('reduce-motion')) {
+    return true;
+  }
+  return typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
 }
 
 function sleep(ms) {
@@ -1723,6 +1731,7 @@ function showScreen(name) {
   }
   state.screen = name;
   document.body.dataset.screen = name;
+  audio.setScene(name);
   window.scrollTo(0, 0);
 }
 
@@ -2059,6 +2068,10 @@ function resultTextForLocal() {
   const game = state.game;
   if (!game) return '';
   if (game.draw) return game.limit ? t('maxMovesTitle') : t('drawTitle');
+  const perspective = resultPerspective({ mode: state.mode, winner: game.winner });
+  if (state.mode === 'ai') {
+    return perspective === 'win' ? t('youWinTitle') : t('youLoseTitle');
+  }
   return t('winTitle', { name: displayName(game.winner) });
 }
 
@@ -2502,7 +2515,11 @@ function playLocalMove(symbol, index, y) {
     if (!placeInfinite(game, index, y, symbol)) return false;
     game.lastMove = { x: index, y };
 
-    audio.play('meow');
+    audio.place({
+      symbol,
+      mine: state.mode !== 'ai' || symbol === 'A',
+      mode: state.mode,
+    });
     const result = infiniteResult(game);
     if (result.finished) {
       game.limit = result.limit === true;
@@ -2520,7 +2537,11 @@ function playLocalMove(symbol, index, y) {
   game.moves.push({ i: index, s: symbol });
   game.lastMove = index;
 
-  audio.play('meow');
+  audio.place({
+    symbol,
+    mine: state.mode !== 'ai' || symbol === 'A',
+    mode: state.mode,
+  });
   const result = getResult(game.board, game.size, game.winLength);
 
   if (result.finished) {
@@ -2565,19 +2586,14 @@ function finishLocalRound(result) {
 }
 
 function celebrateLocal(game) {
-  if (game.draw) {
-    audio.play('draw');
-    showSleepZ();
-    return;
-  }
-  const youWon = game.winner === 'A';
-  if (state.mode === 'ai') {
-    audio.play(youWon ? 'win' : 'lose');
-    if (youWon) burstConfetti();
-  } else {
-    audio.play('win');
-    burstConfetti();
-  }
+  const perspective = resultPerspective({
+    mode: state.mode,
+    winner: game.draw ? 'draw' : game.winner,
+  });
+  showResultVisual(perspective, game.winLine);
+  audio.result(perspective, { mode: state.mode });
+  if (perspective === 'win') burstConfetti();
+  else if (perspective === 'draw') showSleepZ();
 }
 
 function scheduleAIMove() {
@@ -2844,6 +2860,17 @@ function applyOnlineState(next, options = {}) {
   const you = next.players?.find((player) => player.isYou);
   if (you) state.online.youSymbol = you.symbol;
 
+  if (
+    !options.initial &&
+    previous &&
+    next.status === 'playing' &&
+    next.turn === state.online.youSymbol &&
+    previous.turn !== next.turn &&
+    !document.hidden
+  ) {
+    audio.play('turn');
+  }
+
   if (next.status === 'waiting') {
     showWaitingRoom(next, options);
   } else {
@@ -2860,12 +2887,15 @@ function applyOnlineState(next, options = {}) {
   const filled = isInfiniteSize(next.size)
     ? Number(next.moveCount ?? next.moves?.length ?? 0)
     : (next.board || []).reduce((count, cell) => count + (cell ? 1 : 0), 0);
-  if (
-    !options.initial &&
-    state.online.lastBoardCount !== null &&
-    filled > state.online.lastBoardCount
-  ) {
-    audio.play('meow');
+  const previousMoves = Number(previous?.moveCount ?? previous?.moves?.length ?? 0);
+  const currentMoves = Number(next.moveCount ?? next.moves?.length ?? 0);
+  if (!options.initial && previous && currentMoves > previousMoves) {
+    const symbol = previous.turn || otherPlayer(next.turn);
+    audio.place({
+      symbol,
+      mine: symbol === state.online.youSymbol,
+      mode: 'online',
+    });
   }
   state.online.lastBoardCount = filled;
 }
@@ -3044,6 +3074,13 @@ function onlineResultText() {
   if (next.winner === 'draw') return t('drawTitle');
   const name = displayName(next.winner);
   if (state.online.finishReason === 'abandon') return t('abandonTitle', { name });
+  const perspective = resultPerspective({
+    mode: 'online',
+    winner: next.winner,
+    mySymbol: state.online.youSymbol,
+  });
+  if (perspective === 'win') return t('youWinTitle');
+  if (perspective === 'lose') return t('youLoseTitle');
   return t('winTitle', { name });
 }
 
@@ -3553,7 +3590,7 @@ function handleUndoResolved(payload) {
     case 'declined':
       if (byYou) {
         showUndoDecline(opponent?.avatar || 'orange');
-        audio.play('lose');
+        audio.play('decline');
       }
       break;
     case 'timeout':
@@ -3635,26 +3672,35 @@ function handleGameOver(payload) {
   if (!next) return;
 
   state.online.finishReason = payload?.reason || 'win';
-  const filled = isInfiniteSize(next.size)
-    ? Number(next.moveCount ?? next.moves?.length ?? 0)
-    : (next.board || []).join('');
-  const key = `${next.id}:${filled}:${next.winner}`;
-
-  if (state.online.celebratedKey !== key) {
+  const moveCount = Number(next.moveCount ?? next.moves?.length ?? 0);
+  const key = resultEffectKey({
+    roomId: next.id,
+    round: next.round ?? 0,
+    moveCount,
+    winner: next.winner,
+  });
+  const winner = payload?.winner ?? next.winner;
+  const perspective = resultPerspective({
+    mode: 'online',
+    winner,
+    mySymbol: state.online.youSymbol,
+    reason: payload?.reason,
+  });
+  const firstTime = state.online.celebratedKey !== key;
+  if (firstTime) {
     state.online.celebratedKey = key;
-    const winner = payload?.winner ?? next.winner;
-    if (winner === 'draw') {
-      audio.play('draw');
-      showSleepZ();
-    } else if (winner === state.online.youSymbol) {
-      audio.play('win');
-      if (payload?.reason !== 'abandon') burstConfetti();
-    } else {
-      audio.play('lose');
-    }
+    audio.result(perspective, { mode: 'online' });
   }
 
   syncOnlineView();
+
+  if (!firstTime) return;
+  showResultVisual(perspective, next.winLine);
+  if (perspective === 'win') {
+    if (payload?.reason !== 'abandon') burstConfetti();
+  } else if (perspective === 'draw') {
+    showSleepZ();
+  }
 }
 
 function handleEmoteReceived(payload) {
@@ -3958,7 +4004,7 @@ function toggleSound() {
   audio.setEnabled(state.settings.sound);
   if (state.settings.sound) {
     audio.unlock();
-    audio.play('meow');
+    audio.play('click');
   }
   saveSettings(state.settings);
   updateSoundButton();
@@ -3966,11 +4012,58 @@ function toggleSound() {
   if (checkbox) checkbox.checked = state.settings.sound;
 }
 
+const VOLUME_KEYS = {
+  master: 'volumeMaster',
+  music: 'volumeMusic',
+  sfx: 'volumeSfx',
+};
+
+function volumePercent(value) {
+  return Math.round(clampVolume(value) * 100);
+}
+
+function updateVolumeControl(group, value) {
+  const input = $(`set-volume-${group}`);
+  const output = $(`set-volume-${group}-value`);
+  const percent = volumePercent(value);
+  if (input) {
+    input.value = String(percent);
+    input.setAttribute('aria-valuetext', t('volumePercent', { n: percent }));
+  }
+  if (output) output.textContent = `${percent}%`;
+}
+
+function syncVolumeControls() {
+  for (const group of Object.keys(VOLUME_KEYS)) {
+    updateVolumeControl(group, state.settings[VOLUME_KEYS[group]]);
+  }
+  const musicButton = document.querySelector('[data-audio-preview="music"]');
+  if (musicButton) musicButton.setAttribute('aria-pressed', 'false');
+}
+
+function volumePayload() {
+  return {
+    master: state.settings.volumeMaster,
+    music: state.settings.volumeMusic,
+    sfx: state.settings.volumeSfx,
+  };
+}
+
+function setVolumeGroup(group, percent) {
+  const key = VOLUME_KEYS[group];
+  if (!key) return;
+  state.settings[key] = clampVolume(Number(percent) / 100, state.settings[key]);
+  audio.setVolumes(volumePayload());
+  updateVolumeControl(group, state.settings[key]);
+}
+
 function populateSettings() {
   $('set-sound').checked = state.settings.sound;
   $('set-music').checked = state.settings.music;
   $('set-motion').checked = state.settings.reduceMotion;
   $('set-lang').value = state.settings.lang;
+  syncVolumeControls();
+  audio.setVolumes(volumePayload());
   updateSoundButton();
 }
 
@@ -3987,6 +4080,7 @@ function applyLanguage(lang) {
   renderScores();
   refreshInfiniteText();
   updateSoundButton();
+  syncVolumeControls();
   renderAuthAvatars();
   updatePasswordStrength();
   refreshAuthInviteNote();
@@ -4460,7 +4554,7 @@ function setupDialogs() {
     audio.setEnabled(state.settings.sound);
     if (state.settings.sound) {
       audio.unlock();
-      audio.play('meow');
+      audio.play('click');
     }
     saveSettings(state.settings);
     updateSoundButton();
@@ -4471,6 +4565,26 @@ function setupDialogs() {
     audio.unlock();
     audio.setMusicEnabled(state.settings.music);
     saveSettings(state.settings);
+  });
+
+  for (const group of Object.keys(VOLUME_KEYS)) {
+    const input = $(`set-volume-${group}`);
+    if (!input) continue;
+    input.addEventListener('input', (event) => {
+      setVolumeGroup(group, event.target.value);
+    });
+    input.addEventListener('change', () => {
+      saveSettings(state.settings);
+      if (group === 'sfx') audio.play('click');
+    });
+  }
+
+  document.querySelectorAll('[data-audio-preview]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const name = button.dataset.audioPreview;
+      const active = audio.playPreview(name);
+      if (name === 'music') button.setAttribute('aria-pressed', String(active));
+    });
   });
 
   $('set-motion').addEventListener('change', (event) => {
@@ -4519,9 +4633,11 @@ function setupAudioUnlock() {
     audio.unlock();
     document.removeEventListener('pointerdown', unlock);
     document.removeEventListener('keydown', unlock);
+    document.removeEventListener('touchend', unlock);
   };
   document.addEventListener('pointerdown', unlock);
   document.addEventListener('keydown', unlock);
+  document.addEventListener('touchend', unlock);
 }
 
 function setupNetworkWatchers() {

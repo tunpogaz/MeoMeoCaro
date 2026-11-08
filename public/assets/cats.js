@@ -384,3 +384,18 @@ export function bellSVG() {
     </svg>
   `;
 }
+
+/** May mua nho cho man hinh thua: hinh SVG goc cua du an. */
+export function rainCloudSVG() {
+  return `
+    <svg viewBox="0 0 120 96" aria-hidden="true" focusable="false">
+      <path d="M28 56 q-14 0 -14 -12 q0 -11 12 -12 q2 -14 16 -14 q12 0 16 10 q4 -4 10 -4 q13 0 14 13 q13 1 13 10 q0 9 -13 9 Z"
+        fill="#D8E6F5" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M40 68 l-3 10" stroke="#7FB6E8" stroke-width="4" stroke-linecap="round" class="rain-drop rain-drop-1"/>
+      <path d="M60 70 l-3 10" stroke="#7FB6E8" stroke-width="4" stroke-linecap="round" class="rain-drop rain-drop-2"/>
+      <path d="M80 68 l-3 10" stroke="#7FB6E8" stroke-width="4" stroke-linecap="round" class="rain-drop rain-drop-3"/>
+      <circle cx="44" cy="42" r="2.4" fill="${INK}" opacity=".55"/>
+      <circle cx="72" cy="42" r="2.4" fill="${INK}" opacity=".55"/>
+    </svg>
+  `;
+}

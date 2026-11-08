@@ -1493,6 +1493,21 @@ try {
     assert.equal(detail.match.result, AH === 'A' ? 'A' : 'B');
     void guestTracker;
   });
+  await test('undo:request has its own 8-per-10s limit besides the general socket limit', async () => {
+    const spam = await connect(undoServer.port);
+    undoSockets.push(spam);
+    await sleep(1100);
+    const results = [];
+    for (let i = 0; i < 9; i += 1) {
+      results.push(await request(spam, 'undo:request', { moveCount: 0 }));
+    }
+    assert.equal(results[8].code, 'rateLimit', JSON.stringify(results));
+    assert.ok(
+      results.slice(0, 8).every((res) => res.code === 'notInRoom'),
+      JSON.stringify(results)
+    );
+    assert.equal(results.filter((res) => res.code === 'rateLimit').length, 1);
+  });
 } finally {
   for (const socket of undoSockets) closeSocket(socket);
   await stopServer(undoServer);

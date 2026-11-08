@@ -42,7 +42,7 @@ Luật cơ bản:
 | Chuẩn bị 2 người | Chọn 3×3 hoặc vô cực |
 | Phòng chờ online | Tạo phòng, nhập mã, xem link mời, cảnh báo nếu link là localhost |
 | Bàn chơi | Bàn cờ, tên/avatar hai bên, điểm, đồng hồ lượt, nút emote, đấu lại, về nhà; nút **Đi lại** (với máy) / **Xin đi lại** (online), băng chờ và hộp thoại đồng ý/từ chối |
-| Cài đặt | Ngôn ngữ VI/EN, âm thanh bật/tắt, hiệu ứng |
+| Cài đặt | Ngôn ngữ VI/EN, bật/tắt âm thanh và nhạc nền, ba thanh âm lượng + nghe thử, hiệu ứng (giảm chuyển động) |
 | Hướng dẫn | Luật chơi, mẹo, giải thích các nút |
 | Bảng điểm | Điểm thắng/thua/hòa cục bộ theo cỡ bàn |
 | Tài khoản | Đăng nhập, đăng ký, hồ sơ, đổi mật khẩu, đổi email, xác thực email, xoá tài khoản |
@@ -59,7 +59,7 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 
 - 9 ô, lưu chỉ số ô 0–8.
 - Máy chủ kiểm tra lượt, ô trống, toạ độ trước khi nhận nước.
-- Đồng hồ mỗi lượt 30 giây; hết giờ thì tự đánh ô trống đầu tiên.
+- Đồng hồ mỗi lượt 30 giây; hết giờ thì máy chủ tự đánh một ô trống **ngẫu nhiên**.
 
 **Vô cực**
 
@@ -67,7 +67,7 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 - Toạ độ là `{x, y}` nguyên, có thể âm; không có hiệu ứng "vòng qua mép bàn".
 - Kéo để di chuyển, zoom, nút căn giữa và quay lại nước cuối.
 - Giới hạn **2000 nước** mỗi ván; chạm giới hạn thì ván kết thúc hòa kỹ thuật.
-- Đồng hồ mỗi lượt 45 giây.
+- Đồng hồ mỗi lượt 45 giây; hết giờ thì máy chủ tự đánh một ô trống **ngẫu nhiên** trong vùng.
 
 ## 4. Chơi online
 
@@ -117,11 +117,63 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 ## 7. Các tiện ích khác
 
 - **VI/EN:** mọi chuỗi giao diện có hai ngôn ngữ, đổi ngay không tải lại.
-- **Âm thanh:** Web Audio tổng hợp, chỉ tạo context sau tương tác đầu tiên; có tắt/bật.
+- **Âm thanh, nhạc và hiệu ứng:** xem mục 7.1 bên dưới.
 - **PWA:** service worker cache app shell, chơi offline với máy; không cache API, socket, health.
 - **Responsive:** kiểm tra 320–360px không tràn ngang.
 - **Trợ năng:** nút có nhãn, bàn cờ dùng nút thật, thông báo `aria-live`, tôn trọng `prefers-reduced-motion`.
 - **Đánh thức server:** khi hosting free ngủ, client thử lại tới ~90 giây và hiện banner thay vì đăng xuất oan.
+
+### 7.1. Âm thanh và nhạc nền
+
+**Nguồn âm thanh**
+
+- Toàn bộ nhạc và hiệu ứng được **tổng hợp bằng Web Audio** (oscillator, filter, noise, convolver). Không có file mp3/wav và không dùng giai điệu có bản quyền. Nhạc menu 92 BPM, 4/4, thang pentatonic trưởng, vòng 8 ô nhịp với biến thể nhỏ mỗi lần vào.
+- Chỉ có **một `AudioContext`**, tạo sau thao tác đầu tiên (chạm, chuột hoặc phím). Trước đó lệnh phát bị bỏ qua nhưng yêu cầu bật nhạc được ghi nhớ. Trình duyệt thiếu Web Audio thì game vẫn chạy bình thường, không lỗi.
+- Đồ thị: master → compressor → loa; hai bus riêng cho nhạc và hiệu ứng; reverb dùng chung tạo từ nhiễu; tối đa 16 voice SFX, voice cũ bị bỏ nhưng âm thắng/thua/hòa không bao giờ bị bỏ. Node được ngắt sau khi phát xong.
+
+**Nhạc nền**
+
+- Phát ở các màn hình menu (trang chủ, tài khoản, hồ sơ, lịch sử, thống kê, cài đặt, hướng dẫn, bảng điểm, phòng chờ). Không phát trong ván, xem lại hoặc màn kết quả.
+- Vào ván: giảm dần ~700ms rồi dừng hẳn; về menu: nổi lên ~1,2 giây. Menu → menu không bật lại. Không bao giờ có hai bộ phát chạy chồng.
+- Tab bị ẩn: treo context và tạm dừng nhạc; hiện lại: tiếp tục nếu vẫn đang ở menu. Tắt nhạc dừng cả bộ lập lịch lẫn nốt đang chờ.
+
+**Bảng hiệu ứng**
+
+| Tên | Khi nào | Dài | Ai nghe |
+| --- | --- | --- | --- |
+| `place` | Mỗi nước đặt quân | ~180–220ms | Tất cả người trong ván; quân của mình rõ hơn, quân đối thủ nhỏ hơn và lệch tai; 2 người cùng máy nghe đều hai tai |
+| `win` | Kết thúc thắng | ~2,5s | Người thắng (theo góc nhìn từng client) |
+| `lose` | Kết thúc thua | ~2s | Người thua |
+| `draw` | Kết thúc hòa | ~1,2s | Cả hai |
+| `undo` | Đi lại được chấp nhận | ~0,4s | Người đi lại/cả hai |
+| `decline` | Đối thủ từ chối đi lại | ~0,5s | Người xin đi lại |
+| `turn` | Bắt đầu lượt của bạn (online, tab hiện) | ~0,4s | Người vừa được lượt |
+| `click`, `error`, `emote`, `join` | Bấm nút, nước không hợp lệ, biểu cảm, vào phòng | ngắn | Người thao tác |
+
+- Tiếng mèo cam và mèo xám khác cao độ, có biến thiên ngẫu nhiên nhẹ về cao độ/độ dài. Mỗi nước chỉ phát một lần kể cả khi `room:state` lặp hoặc F5.
+- **Góc nhìn kết quả** là hàm thuần: online so `winner` với ký hiệu của người xem (kể cả đối thủ rời phòng), AI so với người chơi, 2 người cùng máy luôn là thắng, replay là trung tính. Hiệu ứng kết quả khoá theo `roomId:round:moveCount:winner`, nên F5/rejoin/`room:state` lặp không phát lại; đấu lại tạo hiệu ứng mới.
+
+**Hình ảnh kết quả**
+
+- Thắng: giữ confetti cá/chân mèo và đường thắng, thêm quầng sáng quanh các ô thắng và chữ "Bạn thắng!".
+- Thua: không confetti; mèo buồn, mây mưa SVG gốc phía trên bàn, bàn giảm màu ~25% trong ~1,5 giây, chữ "Bạn thua rồi, thử lại nhé!".
+- Hòa: mèo ngủ với "Zzz", chữ "Hòa".
+- Không nhấp nháy quá 3 lần/giây, không chớp toàn màn hình. Bật **Giảm chuyển động** sẽ bỏ confetti/mưa/đổi màu động nhưng vẫn giữ chữ và âm thanh.
+
+**Cài đặt âm thanh**
+
+- Công tắc **Âm thanh** (tổng) và **Nhạc nền**; ba thanh **Tổng / Nhạc nền / Hiệu ứng** 0–100, bước 5, mặc định 80/40/80, kéo là áp dụng ngay, nhả thanh Hiệu ứng phát một tiếng mèo nhỏ.
+- Nút nghe thử: mèo cam, mèo xám, thắng, thua, hòa, lêu lêu và bật/tắt nhạc. Nghe thử hoạt động cả trước lần chạm đầu (nút tự mở khóa audio).
+- Giá trị lưu trong `localStorage`, tự chuyển các khóa cũ (`masterVolume`, `volume`, `musicVolume`, `sfxVolume`, ...) sang cấu trúc mới; giá trị hỏng bị kẹp về 0–1 thay vì làm hỏng app. Thanh trượt có nhãn, `aria-valuetext` ("40 phần trăm"), thao tác được bằng phím và đủ lớn cho cảm ứng.
+
+**Cách kiểm tra**
+
+1. Mở app, **chưa chạm** → không có âm thanh; chạm một lần → nhạc menu nổi lên.
+2. Cài đặt → nghe thử từng nút; kéo ba thanh; tải lại → giá trị được giữ.
+3. Vào ván AI, đánh vài nước → nghe mèo mình/máy; thắng và thua để nghe âm + xem mưa/confetti.
+4. Online hai máy: mỗi bên nghe đúng thắng/thua, hiệu ứng đúng một lần; F5 khi đã xong không phát lại.
+5. Bật Giảm chuyển động rồi thua → không mưa/confetti nhưng vẫn có âm và chữ.
+6. Muốn đọc log kiểm thử: đặt `window.__MMC_TEST__ = true` trước khi tải trang, sau đó đọc `window.__MMC_AUDIO_LOG` (rỗng trước tương tác).
 
 ## 8. Sự kiện Socket.IO
 
@@ -155,7 +207,7 @@ Máy chủ gửi (server → client):
 | `room:closed` | lý do | Phòng đóng |
 | `room:replaced` | — | Tài khoản mở tab khác |
 | `error:message` | mã lỗi, thông điệp | Lỗi chung |
-| `undo:requested` | người xin, tên/avatar, số nước, hạn | Có yêu cầu đi lại |
+| `undo:requested` | `{fromName, fromAvatar, fromSymbol, moveCount, expiresAt}` | Có yêu cầu đi lại |
 | `undo:resolved` | `accepted` / `declined` / `timeout` / `cancelled` / `aborted` | Yêu cầu đi lại kết thúc |
 
 `room:state` bổ sung `moveCount`, `youHaveMove`, `undoLeft`, `undoCooldownUntil`, `undoDeclinedHere` và `undo` (yêu cầu đang chờ: ai xin, số nước, hạn, còn lại bao lâu, có phải của bạn không).
@@ -241,3 +293,4 @@ Sao chép `.env.example` thành `.env`; không commit `.env`.
 - Bàn vô cực có giới hạn kỹ thuật 2000 nước; ván rất dài sẽ hòa.
 - Đi lại online cần đối thủ trả lời trong 15 giây; tối đa 3 lần/người/ván và có cooldown 10 giây sau lần bị từ chối/hết giờ. F5 đúng lúc đang chờ sẽ hủy yêu cầu (server coi là mất kết nối), không khôi phục hộp thoại sau khi tải lại.
 - Chưa có giải đấu, chat tự do, hay xếp hạng toàn cầu.
+- Âm thanh là bản tổng hợp kiểu chiptune/đồ chơi, không phải nhạc thu; chất lượng phụ thuộc loa/tai nghe. iOS cần một lần chạm để mở khóa Web Audio và công tắc im lặng của iPhone có thể tắt toàn bộ âm thanh.

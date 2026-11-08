@@ -662,6 +662,7 @@
         <div class="board-wrap">
           <div id="board" class="board" role="group"></div>
           <svg id="win-svg" class="win-svg" aria-hidden="true"></svg>
+          <div id="result-weather" class="result-weather" aria-hidden="true" hidden></div>
 
           <div id="board-infinite" class="infinite-board" hidden>
             <div id="infinite-stage" class="infinite-stage">
@@ -790,6 +791,7 @@
           <button class="modal-close" type="button" data-close="dialog-settings" data-i18n-aria="close">×</button>
         </header>
         <div class="modal-body">
+          <h3 class="setting-group-title" data-i18n="audioSection"></h3>
           <label class="setting-row" for="set-sound">
             <span class="setting-text">
               <strong data-i18n="sound"></strong>
@@ -804,6 +806,51 @@
             </span>
             <input class="switch" id="set-music" type="checkbox" role="switch" />
           </label>
+          <div class="setting-row slider-row">
+            <div class="setting-text">
+              <label for="set-volume-master"><strong data-i18n="volumeMaster"></strong></label>
+              <small data-i18n="volumeMasterDesc"></small>
+            </div>
+            <div class="slider-wrap">
+              <input class="slider" id="set-volume-master" type="range" min="0" max="100" step="5" />
+              <output id="set-volume-master-value" for="set-volume-master"></output>
+            </div>
+          </div>
+          <div class="setting-row slider-row">
+            <div class="setting-text">
+              <label for="set-volume-music"><strong data-i18n="volumeMusic"></strong></label>
+              <small data-i18n="volumeMusicDesc"></small>
+            </div>
+            <div class="slider-wrap">
+              <input class="slider" id="set-volume-music" type="range" min="0" max="100" step="5" />
+              <output id="set-volume-music-value" for="set-volume-music"></output>
+            </div>
+          </div>
+          <div class="setting-row slider-row">
+            <div class="setting-text">
+              <label for="set-volume-sfx"><strong data-i18n="volumeSfx"></strong></label>
+              <small data-i18n="volumeSfxDesc"></small>
+            </div>
+            <div class="slider-wrap">
+              <input class="slider" id="set-volume-sfx" type="range" min="0" max="100" step="5" />
+              <output id="set-volume-sfx-value" for="set-volume-sfx"></output>
+            </div>
+          </div>
+          <div class="setting-row preview-block">
+            <span class="setting-text">
+              <strong data-i18n="audioPreview"></strong>
+              <small data-i18n="audioPreviewDesc"></small>
+            </span>
+            <div class="preview-buttons" role="group" data-i18n-aria="audioPreview">
+              <button class="btn mini secondary" type="button" data-audio-preview="orange" data-i18n="previewOrange"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="gray" data-i18n="previewGray"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="win" data-i18n="previewWin"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="lose" data-i18n="previewLose"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="draw" data-i18n="previewDraw"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="decline" data-i18n="previewDecline"></button>
+              <button class="btn mini secondary" type="button" data-audio-preview="music" data-i18n="previewMusic"></button>
+            </div>
+          </div>
           <label class="setting-row" for="set-motion">
             <span class="setting-text">
               <strong data-i18n="reduceMotion"></strong>
@@ -839,6 +886,7 @@
             <li data-i18n="rule7"></li>
             <li data-i18n="rule8"></li>
             <li data-i18n="rule9"></li>
+            <li data-i18n="rule10"></li>
           </ul>
         </div>
       </div>

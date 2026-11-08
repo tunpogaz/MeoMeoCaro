@@ -4,6 +4,7 @@
  * Khong chua luat choi - chi hien thi.
  */
 import { t } from './i18n.js';
+import { rainCloudSVG } from '../assets/cats.js';
 
 let boardEl = null;
 let boardWrap = null;
@@ -23,7 +24,10 @@ let confettiRaf = 0;
 let toastTimer = null;
 
 function prefersReducedMotion() {
-  return document.body.classList.contains('reduce-motion');
+  if (document.body.classList.contains('reduce-motion')) return true;
+  return typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
 }
 
 function enabledCells() {
@@ -378,6 +382,49 @@ export function showWinLine(line) {
 export function clearWinLine() {
   lastWinLine = null;
   if (winSvg) winSvg.innerHTML = '';
+  clearResultVisual();
+}
+
+// ---------------------------------------------------------------------------
+// Hieu ung ket qua: vong sang cho nguoi thang, may mua cho nguoi thua
+// ---------------------------------------------------------------------------
+export function clearResultVisual() {
+  if (boardWrap) {
+    boardWrap.classList.remove('result-win', 'result-lose', 'result-draw');
+    boardWrap.querySelectorAll('.win-glow').forEach((cell) => cell.classList.remove('win-glow'));
+  }
+  const weather = document.getElementById('result-weather');
+  if (weather) {
+    weather.hidden = true;
+    weather.innerHTML = '';
+  }
+}
+
+export function showResultVisual(perspective, line = null) {
+  clearResultVisual();
+  if (!boardWrap) return;
+  if (perspective === 'win') {
+    boardWrap.classList.add('result-win');
+    if (Array.isArray(line)) {
+      for (const index of line) {
+        if (Number.isInteger(index) && cells[index]) cells[index].classList.add('win-glow');
+      }
+    }
+    return;
+  }
+  if (perspective === 'lose') {
+    boardWrap.classList.add('result-lose');
+    if (prefersReducedMotion()) return;
+    const weather = document.getElementById('result-weather');
+    if (weather) {
+      weather.innerHTML = rainCloudSVG();
+      weather.hidden = false;
+    }
+    return;
+  }
+  if (perspective === 'draw') {
+    boardWrap.classList.add('result-draw');
+  }
 }
 
 // ---------------------------------------------------------------------------

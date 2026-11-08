@@ -9,13 +9,14 @@
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
     "admin:reset-password": "node scripts/admin-reset-password.js",
-    "test": "node test/ai.test.mjs && node test/wake.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs && node test/password-reset.test.mjs",
+    "test": "node test/ai.test.mjs && node test/wake.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs && node test/password-reset.test.mjs && node test/audio.test.mjs",
     "test:ai": "node test/ai.test.mjs",
     "test:wake": "node test/wake.test.mjs",
     "test:server": "node test/server.test.mjs",
     "test:auth": "node test/auth.test.mjs",
     "test:history": "node test/history.test.mjs",
-    "test:password-reset": "node test/password-reset.test.mjs"
+    "test:password-reset": "node test/password-reset.test.mjs",
+    "test:audio": "node test/audio.test.mjs"
   },
   "engines": {
     "node": ">=22.13"
