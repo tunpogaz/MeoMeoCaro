@@ -28,6 +28,7 @@ import {
   isInRegion,
   isInfiniteSize,
   normalizeBoardSize,
+  undoTargetCount,
   winLengthFor,
 } from './public/js/game-core.js';
 
@@ -36,6 +37,15 @@ const PORT = Number(process.env.PORT) || 3000;
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || '').trim();
 const IS_PROD = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = (process.env.TRUST_PROXY || '').trim();
+
+function positiveIntEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name], 10);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+const UNDO_TIMEOUT_MS = positiveIntEnv('UNDO_TIMEOUT_MS', 15_000);
+const UNDO_COOLDOWN_MS = positiveIntEnv('UNDO_COOLDOWN_MS', 10_000);
+const UNDO_MAX_REQUESTS = 3;
 
 if (IS_PROD && !String(process.env.SESSION_SECRET || '').trim()) {
   console.error(
@@ -241,6 +251,12 @@ function createRoom(id, size = DEFAULT_BOARD_SIZE) {
     moveLog: [],
     matchStartedAt: null,
     matchSaved: false,
+    undo: {
+      pending: null,
+      counts: { A: 0, B: 0 },
+      cooldownUntil: { A: 0, B: 0 },
+      declinedCounts: { A: new Set(), B: new Set() },
+    },
     lastActivity: Date.now(),
     timers: { grace: null, close: null },
   };
@@ -307,6 +323,10 @@ function publicState(room, youKey) {
   const now = Date.now();
   const canRunTimer =
     room.status === 'playing' && room.turnDeadline !== null && bothConnected(room);
+  const viewer = room.players.find((p) => p.playerKey === youKey) || null;
+  const viewerSymbol = viewer?.symbol || null;
+  const pendingUndo = room.undo?.pending || null;
+  const moveCount = room.moveLog.length;
   const state = {
     id: room.id,
     size: room.size,
@@ -322,6 +342,7 @@ function publicState(room, youKey) {
     winLine: cloneWinLine(room.winLine),
     score: { ...room.score },
     starter: room.starter,
+    moveCount,
     players: room.players.map((p) => ({
       symbol: p.symbol,
       name: p.name,
@@ -333,6 +354,27 @@ function publicState(room, youKey) {
     turnEndsIn: canRunTimer ? Math.max(0, room.turnDeadline - now) : null,
     rematchVotes: room.rematchVotes.size,
     youVotedRematch: room.rematchVotes.has(youKey),
+    youHaveMove: viewerSymbol
+      ? room.moveLog.some((move) => move.s === viewerSymbol)
+      : false,
+    undoLeft: viewerSymbol
+      ? Math.max(0, UNDO_MAX_REQUESTS - (room.undo?.counts[viewerSymbol] || 0))
+      : 0,
+    undoCooldownUntil: viewerSymbol ? room.undo?.cooldownUntil[viewerSymbol] || 0 : 0,
+    undoDeclinedHere: viewerSymbol
+      ? Boolean(room.undo?.declinedCounts[viewerSymbol]?.has(moveCount))
+      : false,
+    undo: pendingUndo
+      ? {
+          fromSymbol: pendingUndo.requesterSymbol,
+          fromName: pendingUndo.fromName,
+          fromAvatar: pendingUndo.fromAvatar,
+          moveCount: pendingUndo.moveCount,
+          expiresAt: pendingUndo.expiresAt,
+          expiresIn: Math.max(0, pendingUndo.expiresAt - now),
+          byYou: pendingUndo.requesterSymbol === viewerSymbol,
+        }
+      : null,
   };
 
   if (room.infinite) {
@@ -372,14 +414,129 @@ function allowEvent(socket) {
   return bucket.count <= RATE_LIMIT;
 }
 
+/** Gioi han rieng cho undo:request (chong spam xin di lai lien tuc). */
+const UNDO_REQUEST_WINDOW_MS = 10_000;
+const UNDO_REQUEST_MAX = 8;
+function allowUndoRequest(socket) {
+  const now = Date.now();
+  let bucket = socket.data.undoBucket;
+  if (!bucket || now - bucket.start >= UNDO_REQUEST_WINDOW_MS) {
+    bucket = { start: now, count: 0 };
+    socket.data.undoBucket = bucket;
+  }
+  bucket.count += 1;
+  return bucket.count <= UNDO_REQUEST_MAX;
+}
+
 function touch(room) {
   room.lastActivity = Date.now();
+}
+
+// ---------------------------------------------------------------------------
+// Di lai (undo) — chi server quyet dinh, client chi hien thi
+// ---------------------------------------------------------------------------
+function clearUndoTimer(room) {
+  const pending = room.undo?.pending;
+  if (pending?.timer) {
+    clearTimeout(pending.timer);
+    pending.timer = null;
+  }
+}
+
+function cancelUndo(room) {
+  clearUndoTimer(room);
+  if (room.undo) room.undo.pending = null;
+}
+
+function resetUndoState(room) {
+  clearUndoTimer(room);
+  room.undo = {
+    pending: null,
+    counts: { A: 0, B: 0 },
+    cooldownUntil: { A: 0, B: 0 },
+    declinedCounts: { A: new Set(), B: new Set() },
+  };
+}
+
+function restoreTurnClock(room) {
+  room.turnDeadline =
+    room.status === 'playing' && bothConnected(room)
+      ? Date.now() + turnMsFor(room.size)
+      : null;
+}
+
+function emitUndoResolved(room, result, extra = {}) {
+  if (!rooms.has(room.id)) return;
+  io.to(room.id).emit('undo:resolved', { result, ...extra });
+}
+
+function completePending(room, result, extra = {}) {
+  cancelUndo(room);
+  restoreTurnClock(room);
+  touch(room);
+  // Gui ket qua truoc de client con nho ai la nguoi xin (hien bong bong tu choi).
+  emitUndoResolved(room, result, extra);
+  sendState(room);
+}
+
+/**
+ * Huy yeu cau dang cho ma khong doi van. Dung khi mat ket noi / ket thuc /
+ * dong phong. notify=false khi van sap ket thuc (client nhan game:over).
+ */
+function abortUndo(room, { notify = true, result = 'aborted' } = {}) {
+  if (!room.undo?.pending) return false;
+  cancelUndo(room);
+  restoreTurnClock(room);
+  touch(room);
+  if (notify) {
+    emitUndoResolved(room, result);
+    sendState(room);
+  }
+  return true;
+}
+
+/** Cat danh sach nuoc di va dung lai ban co theo dung thao tac undo. */
+function truncateRoomMoves(room, requesterSymbol) {
+  const keep = undoTargetCount(room.moveLog, requesterSymbol);
+  if (keep === null) return false;
+
+  room.moveLog = room.moveLog.slice(0, keep);
+  if (room.infinite) {
+    room.moves = room.moves.slice(0, keep);
+    room.cells = new Map();
+    for (const move of room.moves) {
+      room.cells.set(cellKey(move.x, move.y), move.s);
+    }
+    room.region = computeRegion(room.moves);
+    const last = room.moves[room.moves.length - 1] || null;
+    room.lastMove = last ? { x: last.x, y: last.y } : null;
+  } else {
+    room.board = createBoard(room.size);
+    for (const move of room.moveLog) room.board[move.i] = move.s;
+    const last = room.moveLog[room.moveLog.length - 1] || null;
+    room.lastMove = last ? last.i : null;
+  }
+  room.turn = requesterSymbol;
+  room.winner = null;
+  room.winLine = null;
+  room.status = 'playing';
+  touch(room);
+  return true;
+}
+
+function payloadRoomMatches(room, payload) {
+  return (
+    payload &&
+    typeof payload.roomId === 'string' &&
+    normalizeRoomId(payload.roomId) === room.id
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Vong doi phong / van
 // ---------------------------------------------------------------------------
 function startRound(room, firstSymbol) {
+  resetUndoState(room);
   if (room.infinite) {
     room.board = null;
     room.cells = new Map();
@@ -404,6 +561,7 @@ function startRound(room, firstSymbol) {
 
 function finishRound(room, winner, line, reason) {
   if (room.status === 'finished') return;
+  cancelUndo(room);
   room.status = 'finished';
   room.winner = winner;
   room.winLine = line;
@@ -484,6 +642,7 @@ function applyInfiniteMove(room, x, y, symbol) {
 
 function destroyRoom(room, reason) {
   if (!rooms.has(room.id)) return;
+  cancelUndo(room);
   rooms.delete(room.id);
   clearTimeout(room.timers.grace);
   clearTimeout(room.timers.close);
@@ -504,6 +663,7 @@ function destroyRoom(room, reason) {
 /** Danh dau mot nguoi choi mat ket noi va bat dau dem gio giu cho. */
 function markDisconnected(room, player) {
   player.connected = false;
+  abortUndo(room, { result: 'aborted' });
   room.turnDeadline = null; // tam dung dong ho luot
   touch(room);
 
@@ -706,8 +866,14 @@ io.on('connection', (socket) => {
     socket.data.roomId = room.id;
     socket.data.playerKey = player.playerKey;
 
-    // Neu ca hai da ket noi lai va van dang choi -> chay tiep dong ho
-    if (room.status === 'playing' && bothConnected(room) && room.turnDeadline === null) {
+    // Neu ca hai da ket noi lai va van dang choi -> chay tiep dong ho.
+    // Dang cho tra loi di lai thi giu dong ho dung yen.
+    if (
+      room.status === 'playing' &&
+      bothConnected(room) &&
+      room.turnDeadline === null &&
+      !room.undo?.pending
+    ) {
       room.turnDeadline = Date.now() + turnMsFor(room.size);
     }
 
@@ -731,6 +897,10 @@ io.on('connection', (socket) => {
     if (room.status !== 'playing') {
       sendError(socket, 'gameNotPlaying', 'Van dau chua bat dau hoac da ket thuc.');
       return replyError(ack, 'gameNotPlaying', 'Van dau chua bat dau hoac da ket thuc.');
+    }
+    if (room.undo?.pending) {
+      sendError(socket, 'UNDO_PENDING', 'Dang cho tra loi xin di lai, tam dung danh.');
+      return replyError(ack, 'UNDO_PENDING', 'Dang cho tra loi xin di lai, tam dung danh.');
     }
     if (room.turn !== player.symbol) {
       sendError(socket, 'notYourTurn', 'Chua den luot ban dau!');
@@ -772,6 +942,152 @@ io.on('connection', (socket) => {
     }
 
     applyMove(room, index, player.symbol);
+    if (typeof ack === 'function') ack({ ok: true });
+  });
+
+  // --- Xin di lai --------------------------------------------------------
+  socket.on('undo:request', (payload, ack) => {
+    if (!allowEvent(socket) || !allowUndoRequest(socket)) {
+      return replyError(ack, 'rateLimit', 'Cham thoi meo oi!');
+    }
+    const ctx = getRoomContext(socket);
+    if (!ctx) return replyError(ack, 'notInRoom', 'Ban khong o trong phong nay.');
+    const { room, player } = ctx;
+    if (!payloadRoomMatches(room, payload)) {
+      return replyError(ack, 'STALE_STATE', 'Ban co da thay doi, thu lai nhe.');
+    }
+    if (room.status !== 'playing') {
+      return replyError(ack, 'UNDO_NOT_AVAILABLE', 'Bay gio chua the di lai.');
+    }
+    if (!bothConnected(room)) {
+      return replyError(ack, 'OPPONENT_OFFLINE', 'Doi thu chua ket noi lai.');
+    }
+    if (room.undo?.pending) {
+      return replyError(ack, 'UNDO_PENDING', 'Dang cho tra loi xin di lai.');
+    }
+    const moveCount = payload?.moveCount;
+    if (!Number.isInteger(moveCount) || moveCount !== room.moveLog.length) {
+      return replyError(ack, 'STALE_STATE', 'Ban co da thay doi, thu lai nhe.');
+    }
+    if ((room.undo?.counts[player.symbol] || 0) >= UNDO_MAX_REQUESTS) {
+      return replyError(ack, 'UNDO_LIMIT_REACHED', 'Da het luot xin di lai.');
+    }
+    if ((room.undo?.cooldownUntil[player.symbol] || 0) > Date.now()) {
+      return replyError(ack, 'UNDO_COOLDOWN', 'Cho mot chut roi xin lai nhe.');
+    }
+    if (room.undo?.declinedCounts[player.symbol]?.has(moveCount)) {
+      return replyError(
+        ack,
+        'UNDO_ALREADY_DECLINED_HERE',
+        'The co nay da bi tu choi roi.'
+      );
+    }
+    if (undoTargetCount(room.moveLog, player.symbol) === null) {
+      return replyError(ack, 'UNDO_NO_MOVES', 'Ban chua co nuoc di nao.');
+    }
+
+    const expiresAt = Date.now() + UNDO_TIMEOUT_MS;
+    const pending = {
+      requesterKey: player.playerKey,
+      requesterSymbol: player.symbol,
+      fromName: player.name,
+      fromAvatar: player.avatar,
+      moveCount,
+      expiresAt,
+      timer: null,
+    };
+    room.undo.pending = pending;
+    room.undo.counts[player.symbol] += 1;
+    room.turnDeadline = null;
+    touch(room);
+
+    pending.timer = setTimeout(() => {
+      if (!rooms.has(room.id)) return;
+      if (room.undo?.pending !== pending) return;
+      room.undo.declinedCounts[pending.requesterSymbol].add(pending.moveCount);
+      room.undo.cooldownUntil[pending.requesterSymbol] = Date.now() + UNDO_COOLDOWN_MS;
+      completePending(room, 'timeout', { fromSymbol: pending.requesterSymbol });
+    }, UNDO_TIMEOUT_MS);
+    pending.timer.unref?.();
+
+    io.to(room.id).emit('undo:requested', {
+      fromName: player.name,
+      fromAvatar: player.avatar,
+      fromSymbol: player.symbol,
+      moveCount,
+      expiresAt,
+    });
+    sendState(room);
+    if (typeof ack === 'function') {
+      ack({
+        ok: true,
+        expiresAt,
+        undoLeft: Math.max(0, UNDO_MAX_REQUESTS - room.undo.counts[player.symbol]),
+      });
+    }
+  });
+
+  // --- Tra loi xin di lai -----------------------------------------------
+  socket.on('undo:respond', (payload, ack) => {
+    if (!allowEvent(socket)) {
+      return replyError(ack, 'rateLimit', 'Cham thoi meo oi!');
+    }
+    const ctx = getRoomContext(socket);
+    if (!ctx) return replyError(ack, 'notInRoom', 'Ban khong o trong phong nay.');
+    const { room, player } = ctx;
+    if (!payloadRoomMatches(room, payload)) {
+      return replyError(ack, 'STALE_STATE', 'Ban co da thay doi, thu lai nhe.');
+    }
+    if (typeof payload?.accept !== 'boolean') {
+      return replyError(ack, 'STALE_STATE', 'Phan hoi khong hop le.');
+    }
+
+    const pending = room.undo?.pending;
+    if (!pending) {
+      if (typeof ack === 'function') ack({ ok: true, ignored: true });
+      return;
+    }
+    if (pending.requesterKey === player.playerKey) {
+      return replyError(ack, 'UNDO_NOT_AVAILABLE', 'Ban khong the tu tra loi minh.');
+    }
+    if (room.status !== 'playing') {
+      return replyError(ack, 'UNDO_NOT_AVAILABLE', 'Van da ket thuc.');
+    }
+
+    if (payload.accept) {
+      const applied = truncateRoomMoves(room, pending.requesterSymbol);
+      if (!applied) {
+        completePending(room, 'aborted');
+        return replyError(ack, 'UNDO_NO_MOVES', 'Khong con nuoc de di lai.');
+      }
+      completePending(room, 'accepted', { bySymbol: player.symbol });
+      if (typeof ack === 'function') ack({ ok: true });
+      return;
+    }
+
+    room.undo.declinedCounts[pending.requesterSymbol].add(pending.moveCount);
+    room.undo.cooldownUntil[pending.requesterSymbol] = Date.now() + UNDO_COOLDOWN_MS;
+    completePending(room, 'declined', { bySymbol: player.symbol });
+    if (typeof ack === 'function') ack({ ok: true });
+  });
+
+  // --- Huy yeu cau di lai -----------------------------------------------
+  socket.on('undo:cancel', (payload, ack) => {
+    if (!allowEvent(socket)) {
+      return replyError(ack, 'rateLimit', 'Cham thoi meo oi!');
+    }
+    const ctx = getRoomContext(socket);
+    if (!ctx) return replyError(ack, 'notInRoom', 'Ban khong o trong phong nay.');
+    const { room, player } = ctx;
+    if (!payloadRoomMatches(room, payload)) {
+      return replyError(ack, 'STALE_STATE', 'Ban co da thay doi, thu lai nhe.');
+    }
+    const pending = room.undo?.pending;
+    if (!pending || pending.requesterKey !== player.playerKey) {
+      if (typeof ack === 'function') ack({ ok: true, ignored: true });
+      return;
+    }
+    completePending(room, 'cancelled', { fromSymbol: player.symbol });
     if (typeof ack === 'function') ack({ ok: true });
   });
 

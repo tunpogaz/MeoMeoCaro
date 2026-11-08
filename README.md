@@ -27,7 +27,7 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Lời mời | Link `location.origin/?room=CODE`, sao chép và chia sẻ. Khách mở link được đưa tới đăng nhập/đăng ký hoặc "Chơi với tư cách khách" rồi tự vào phòng, giữ nguyên mã phòng. Tài khoản đã đăng nhập thấy hộp xác nhận cỡ bàn / luật / chủ phòng trước khi vào. Mã sai, phòng đầy hoặc đã đóng báo rõ và tự bỏ `?room` khỏi URL. Chờ server thức dậy 30–90 giây với thông báo trạng thái |
 | Cài đặt | Bật/tắt âm thanh, nhạc nền, giảm chuyển động; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
 | Lưu trữ | localStorage: hồ sơ khách, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3. Tài khoản và lịch sử nằm ở database phía server |
-| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (3×3 hoặc ∞), đồng hồ 30 giây/lượt (∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi |
+| Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (3×3 hoặc ∞), đồng hồ 30 giây/lượt (∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi. **Đi lại:** chế độ với máy hoàn tác ngay; online gửi yêu cầu cho đối thủ (15 giây, tối đa 3 lần/ván, cooldown 10 giây sau khi bị từ chối/hết giờ) |
 | PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞, `api.js` và `wake.js`, cache v9), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
 | Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; token đặt lại/xác thực email cũng 32 byte, chỉ lưu SHA-256 và dùng một lần; link email luôn dựng từ `PUBLIC_URL`, token chỉ nằm trong URL fragment; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập/quên mật khẩu/đổi email; Helmet + CSP + `Referrer-Policy: no-referrer`; SQL tham số hoá; không trả `password_hash`, `token_hash`, email đầy đủ của người khác hay `user_id` của người khác |
 
@@ -149,9 +149,11 @@ Sao chép `.env.example` thành `.env` nếu muốn cấu hình. **Không commit
 | `RECONNECT_GRACE_MS` | `60000` | Thời gian giữ chỗ khi người chơi mất kết nối |
 | `TURN_MS` | (trống) | Ghi đè thời gian mỗi lượt cho test. Khi để trống: 30 giây cho 3×3, 45 giây cho ∞ |
 | `INFINITE_MAX_MOVES` | `2000` | Giới hạn kỹ thuật số nước của bàn ∞ trước khi hòa; chủ yếu dùng cho test |
+| `UNDO_TIMEOUT_MS` | `15000` | Thời gian đối thủ trả lời yêu cầu đi lại online |
+| `UNDO_COOLDOWN_MS` | `10000` | Thời gian chờ trước khi xin lại sau khi bị từ chối/hết giờ |
 | `DISABLE_RATE_LIMIT` | (trống) | Chỉ dùng trong test (`1` để tắt rate limit) |
 
-`ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS`, `INFINITE_MAX_MOVES` và `DISABLE_RATE_LIMIT` chủ yếu dùng cho test; khi chạy thật không cần đặt.
+`ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS`, `INFINITE_MAX_MOVES`, `UNDO_TIMEOUT_MS`, `UNDO_COOLDOWN_MS` và `DISABLE_RATE_LIMIT` chủ yếu dùng cho test; khi chạy thật không cần đặt.
 
 > **Không bao giờ ghi mật khẩu, token hay chuỗi kết nối database vào log, repo hoặc response.** Server chỉ log mã lỗi và mã phòng; API không trả `password_hash`, `token_hash` hay cookie của người khác.
 
@@ -190,6 +192,30 @@ Trình phát lại chỉ đọc dựng lại bàn từ danh sách nước đi đ
 5. Mỗi lượt có 30 giây (∞: 45 giây); hết giờ máy chủ tự đánh một ô trống ngẫu nhiên, không xử thua, và phát sự kiện `game:timeout`.
 6. Kết thúc ván, cả hai có thể bấm **Đấu lại**; chỉ khi cả hai đồng ý ván mới bắt đầu, giữ nguyên cỡ bàn và đổi người đi trước.
 7. Với bàn ∞, mỗi nước gửi `game:move` dạng `{roomId, x, y}` (toạ độ nguyên, có thể âm). Máy chủ từ chối toạ độ không nguyên, ngoài vùng hiện tại, ô đã có quân, sai lượt hoặc ván đã kết thúc. F5 khôi phục toàn bộ danh sách nước đi và vùng chơi.
+
+### Đi lại (Undo)
+
+**Với máy:** nút **Đi lại** nằm cạnh nút chơi lại/về nhà. Bấm khi đến lượt bạn và đã có ít nhất một nước trong ván; hệ thống bỏ nước của bạn và nước máy vừa đáp (nếu có), trả lượt về bạn. Nút bị khoá kèm lý do khi chưa có nước, máy đang nghĩ hoặc ván đã kết thúc. Bàn ∞ tính lại vùng chơi từ các nước còn lại, không giật khung nhìn.
+
+**Online:** bấm **Xin đi lại** để gửi yêu cầu. Đối thủ thấy hộp thoại kèm thanh đếm ngược 15 giây; **Đồng ý** hoặc **Từ chối** (Esc = từ chối, Enter không bao giờ là đồng ý). Người xin thấy băng "Đang chờ … trả lời" và có thể **Hủy xin**. Khi được đồng ý, cả hai bàn lùi về đúng vị trí trước nước gần nhất của người xin, xoá mọi nước sau đó; lượt trở về người xin, đồng hồ được cấp lại đủ 30 giây (∞: 45 giây), chuỗi thắng/kết quả/tổng nước được tính lại. Khi bị từ chối, người xin thấy bong bóng mèo lêu lêu đúng chuỗi **“lêu lêu không cho đi lại đâu”** (EN: **“Nyah-nyah! No take-backs for you!”**), bàn cờ không đổi. Hết 15 giây không trả lời thì báo trung tính “Đối thủ không trả lời.” (không phải lời từ chối).
+
+Giới hạn: mỗi người tối đa **3 yêu cầu/ván** (tính cả bị từ chối, hết giờ và tự hủy; đấu lại đặt lại); sau khi bị từ chối/hết giờ có **cooldown 10 giây** và **không xin lại đúng thế cờ đó** (cùng số nước đã đi). Trong lúc chờ, cả hai bị khoá đánh và đồng hồ lượt tạm dừng; ngắt kết nối, rời phòng hoặc ván kết thúc sẽ hủy yêu cầu. F5 khi đang chờ: server hủy yêu cầu (coi như mất kết nối) và khôi phục bàn/lượt; vào lại nhanh bằng `playerKey` vẫn nhận được `room:state` kèm thông tin yêu cầu nếu socket cũ còn sống.
+
+Lịch sử lưu **danh sách nước cuối cùng**: các nước đã hoàn tác không xuất hiện trong `matches.moves`, nên xem lại khớp bàn đã chơi; ván vẫn chỉ lưu một lần.
+
+Sự kiện mới (chỉ thêm, không đổi tên sự kiện cũ):
+
+| Chiều | Sự kiện | Dữ liệu |
+| --- | --- | --- |
+| C→S | `undo:request` | `{roomId, moveCount}` → ack `{ok, applied?}` |
+| C→S | `undo:respond` | `{roomId, accept}` (boolean) |
+| C→S | `undo:cancel` | `{roomId}` |
+| S→C | `undo:requested` | `{fromSymbol, fromName, fromAvatar, moveCount, expiresAt}` |
+| S→C | `undo:resolved` | `{result: "accepted"\|"declined"\|"timeout"\|"cancelled"\|"aborted", bySymbol?, fromSymbol?}` |
+
+`room:state` bổ sung `undo` (yêu cầu đang chờ, hạn, ai xin) cùng `undoLeft`, `undoCooldownUntil`, `undoDeclinedHere`, `moveCount`, `youHaveMove`.
+
+Mã lỗi đi lại: `UNDO_NOT_AVAILABLE`, `UNDO_NO_MOVES`, `UNDO_PENDING`, `UNDO_LIMIT_REACHED`, `UNDO_COOLDOWN`, `UNDO_ALREADY_DECLINED_HERE`, `OPPONENT_OFFLINE`, `STALE_STATE`. Giao diện dịch đủ VI/EN.
 
 ### Link mời
 
@@ -315,17 +341,17 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
 - Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online và tài khoản cần server.
 - Service worker **không cache** `/api/*`, `/socket.io/*` hay `/health`, nên lịch sử và phiên đăng nhập luôn lấy dữ liệu mới.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v9`) để người dùng nhận bản mới. Cache v9 đã gồm `api.js`, `wake.js` và toàn bộ module bàn ∞/AI.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v10`) để người dùng nhận bản mới. Cache v10 đã gồm `api.js`, `wake.js`, `game-core.js`, toàn bộ module bàn ∞/AI và giao diện đi lại; không có tệp cũ bị xoá.
 
 ---
 
 ## Kiểm thử tự động
 
 ```bash
-npm test                  # 108 test: ai + wake + server + auth + history + email
-npm run test:ai           # 27 test
+npm test                  # 125 test: ai + wake + server + auth + history + email
+npm run test:ai           # 37 test
 npm run test:wake         # 8 test
-npm run test:server       # 29 test
+npm run test:server       # 36 test
 npm run test:auth         # 15 test
 npm run test:history      # 8 test
 npm run test:password-reset # 21 test
@@ -333,8 +359,8 @@ npm run test:password-reset # 21 test
 
 Mỗi bộ test server khởi động một tiến trình thật ở cổng ngẫu nhiên với **SQLite tạm riêng** (`mkdtemp`), không chạm vào `data/meo.db` và tự dọn sau khi chạy. Có thể kiểm tra PostgreSQL bằng cách chạy server với `DATABASE_URL` trỏ tới database test và lặp lại các kịch bản thủ công; bộ test tự động hiện chạy trên SQLite.
 
-- `test/ai.test.mjs` (27 test): cấu hình bàn 3×3, thắng đủ 4 hướng ở góc/cạnh/giữa, chuỗi ngắn không thắng, không vòng từ cuối hàng sang đầu hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó chỉ trả ô trống. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn và AI tự đánh nhau luôn hợp lệ.
-- `test/server.test.mjs` (29 test): tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; **cỡ bàn 3×3** (nhận `3` và `"3"`, từ chối cỡ khác bằng `UNSUPPORTED_BOARD_SIZE`, luật 3 quân, hòa kín bàn, F5 giữ `size`/`board`/`lastMove`, timer 30s); **∞** (vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng toạ độ âm, F5 khôi phục nước + vùng, timer 45s, hòa `INFINITE_MAX_MOVES`); **tài khoản** (danh tính lấy từ cookie, không lộ `userId`, một tài khoản không chiếm hai ghế, khách vẫn vào phòng tài khoản bằng tên riêng).
+- `test/ai.test.mjs` (37 test): cấu hình bàn 3×3, thắng đủ 4 hướng ở góc/cạnh/giữa, chuỗi ngắn không thắng, không vòng từ cuối hàng sang đầu hàng, chuỗi dài hơn luật vẫn thắng, hòa, ưu tiên nước thắng cuối cùng, AI 3×3 (mở bàn, thắng, chặn, góc), **duyệt cạn AI Khó 3×3** (1164 thế kết thúc, 0 thua), AI mọi độ khó chỉ trả ô trống. Phần ∞ kiểm tra vùng 9×9/mở rộng không co, toạ độ âm và overline, hòa kỹ thuật, AI mở bàn (0,0), AI thắng/chặn và AI tự đánh nhau luôn hợp lệ. **Đi lại:** `undoTargetCount`/`applyUndo` cho 3×3 và ∞ (giữ 1 hoặc 2 nước, trả lượt, `lastMove`, chuỗi thắng/kết quả, tính lại `region`, người đi trước khác nhau, không có nước thì trả `null`), cùng mô phỏng 12 ván AI Khó 3×3 sau nhiều lần đi lại vẫn không thua.
+- `test/server.test.mjs` (36 test): tạo/join phòng, làm sạch tên, không lộ `playerKey`, chặn sai lượt/ô đã đánh/chỉ số sai, thắng do server tính, đấu lại cần 2 phiếu, cooldown biểu cảm, phòng đầy/mã sai, ngắt kết nối rồi vào lại, tab mới thay tab cũ, rời phòng, xoá phòng chờ, hết giờ tự đánh, rate limit; **cỡ bàn 3×3** (nhận `3` và `"3"`, từ chối cỡ khác bằng `UNSUPPORTED_BOARD_SIZE`, luật 3 quân, hòa kín bàn, F5 giữ `size`/`board`/`lastMove`, timer 30s); **∞** (vùng thưa, từ chối toạ độ xấu/ngoài vùng/ô đã có, thắng toạ độ âm, F5 khôi phục nước + vùng, timer 45s, hòa `INFINITE_MAX_MOVES`); **tài khoản** (danh tính lấy từ cookie, không lộ `userId`, một tài khoản không chiếm hai ghế, khách vẫn vào phòng tài khoản bằng tên riêng); **đi lại online** (khoá đánh + dừng đồng hồ, chấp nhận lùi 2 nước và trả lượt, từ chối giữ bàn + cooldown + chặn đúng thế cờ, giới hạn 3 lần/ván kể cả tự hủy, từ chối khi chưa có nước/ván xong/đối thủ offline/người ngoài/tự trả lời, F5 khi đang chờ, ngắt kết nối hủy yêu cầu, timeout báo trung tính, lịch sử chỉ lưu danh sách nước cuối và chỉ một bản ghi).
 - `test/auth.test.mjs` (15 test): cookie httpOnly/SameSite/Path/Max-Age, phiên 7 ngày khi không ghi nhớ, tên đăng nhập/mật khẩu yếu bị từ chối, trùng tên không phân biệt hoa thường, lỗi đăng nhập chung, CSRF thiếu Origin/nội dung không JSON, cập nhật hồ sơ, đổi mật khẩu thu hồi phiên khác nhưng giữ phiên hiện tại, phiên hết hạn bị xoá, đăng xuất, xoá tài khoản ẩn danh + thu hồi phiên, rate limit đăng nhập, migration chạy hai lần vẫn idempotent, production từ chối khởi động khi thiếu `SESSION_SECRET`.
 - `test/wake.test.mjs` (8 test): lỗi mạng/5xx được thử lại với backoff 1.2s → 1.9s → 3.1s … tối đa 10s/lần và dừng sau ~90 giây; không thử lại khi offline hoặc khi server trả 4xx; `/api/auth/me` giữ nguyên người đang đăng nhập khi lỗi mạng, chỉ về khách khi `401` hoặc `{user:null}`.
 - `test/password-reset.test.mjs` (21 test): `mailEnabled`/`no-store`, đăng ký + thư xác thực, DB chỉ lưu hash token, xác thực một lần, link dựng từ `PUBLIC_URL` (không theo Host giả), phản hồi quên mật khẩu luôn giống nhau cho email lạ/chưa xác thực/đã xoá, kiểm tra token, mật khẩu yếu, đặt lại mật khẩu + thu hồi phiên + thư thông báo, token cũ bị vô hiệu, hai request đồng thời chỉ một thắng, token hết hạn, chuẩn hoá email, trùng email chưa xác thực rồi `EMAIL_TAKEN`, đổi email giữ email cũ tới khi xác thực, resend vô hiệu token cũ, xoá tài khoản xoá email/token và ẩn danh tên trong `matches` (đối thủ vẫn xem lịch sử), không lộ token trong log/response, rate limit quên mật khẩu/resend, server không cấu hình mail vẫn chạy.
@@ -342,7 +368,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 
 ---
 
-## 60 kịch bản kiểm thử thủ công
+## Kịch bản kiểm thử thủ công
 
 | # | Kịch bản | Cách làm | Kết quả mong đợi |
 | --- | --- | --- | --- |
@@ -406,6 +432,14 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 58 | Đổi email | Hồ sơ → nhập email mới + mật khẩu hiện tại | Email cũ vẫn hiển thị và vẫn nhận thư khôi phục; dòng "chờ xác thực" hiện email mới đã che; email cũ nhận thư thông báo; xác thực xong email mới thay thế |
 | 59 | Server đang ngủ | Dừng server, tải lại app / mở link `#reset=` hoặc `#verify=` | Hiện "đang đánh thức server", thử lại tăng dần tới ~90 giây; không bị đăng xuất khi lỗi mạng; server trả `{user:null}` mới về khách |
 | 60 | Xoá tài khoản và lịch sử | Chơi online có tài khoản, đối thủ mở lịch sử; xoá tài khoản | Cả hai phía thấy "Người chơi đã xóa"; không còn tên cũ trong DB; email/token bị xoá; không đăng nhập/khôi phục được |
+| 61 | Đi lại với máy 3×3 | Đi 2 nước (máy đã đáp), bấm **Đi lại** | Bàn lùi 2 mèo, về lượt bạn, toast "Đã đi lại", điểm AI không đổi; nút khoá lại khi chưa có nước |
+| 62 | Đi lại bàn ∞ | Chơi vài nước xa gốc, bấm **Đi lại** | Số nước giảm đúng 2, vùng chơi tính lại từ nước còn lại, khung nhìn không nhảy về gốc |
+| 63 | Online: được đồng ý | A xin đi lại, B bấm **Đồng ý** | Cả hai bàn lùi đúng 2 nước, lượt về A, đồng hồ 30 giây chạy lại đủ, hai bên thấy "Đã đi lại" |
+| 64 | Online: bị từ chối | A xin, B bấm **Từ chối** (hoặc Esc) | Bàn không đổi; A thấy bong bóng mèo lêu lêu đúng chuỗi **“lêu lêu không cho đi lại đâu”** (EN đúng chuỗi tiếng Anh); sau 10 giây nút báo "Thế cờ này đã bị từ chối rồi." |
+| 65 | Online: hết giờ / hủy | A xin rồi để hết 15 giây; lặp lại rồi bấm **Hủy xin** | Hết giờ: A thấy "Đối thủ không trả lời." (không phải lời từ chối); hủy: B thấy "Đối thủ đã hủy xin đi lại.", hộp thoại đóng, bàn giữ nguyên |
+| 66 | Online: Enter/Esc và 360px | Mở hộp thoại xin đi lại, bấm Enter rồi Esc; thu cửa sổ 360px | Enter không đồng ý và không đổi bàn; Esc = từ chối; hộp thoại + bong bóng không tràn ngang, chữ đọc được |
+| 67 | Online: F5 khi đang xin | A xin đi lại rồi F5 | Server hủy yêu cầu, A vào lại đúng bàn, không kẹt hộp thoại/banner, vẫn đánh tiếp được; B thấy hộp thoại đóng |
+| 68 | PWA offline + đi lại | Cài PWA, chơi online một lần cho cache, chặn mạng, tải lại, chơi AI rồi **Đi lại** | Trang và module tải từ cache v10, AI 3×3 chạy và đi lại được khi offline, không lỗi console |
 
 Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -427,6 +461,7 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 - **Lưu ván đúng một lần.** `finishRound` đặt cờ `matchSaved` trước khi ghi bất đồng bộ; thắng + ngắt kết nối gần như đồng thời không tạo hai bản ghi. Ghi `matches` và cộng `user_stats` trong **một transaction**; lỗi DB chỉ log, không ném ra ngoài.
 - **Mật khẩu và phiên tách biệt.** Mật khẩu dùng scrypt với salt riêng từng người; token phiên là 32 byte ngẫu nhiên, chỉ SHA-256 của token được lưu. Đăng nhập sai luôn trả cùng một lỗi và vẫn chạy scrypt giả để giảm lộ thông tin thời gian. Đổi mật khẩu thu hồi các phiên khác; xoá tài khoản thu hồi tất cả.
 - **Xoá tài khoản là xoá mềm.** Bản ghi `users` được giữ để lịch sử không mồ côi; username/display_name bị ẩn danh và API lịch sử trả "Người chơi đã xóa" cho cả hai phía, tránh lộ tên cũ.
+- **Đi lại dựng lại bàn từ danh sách nước, không sửa từng ô.** `game-core.js` có `undoTargetCount`/`applyUndo` dùng chung; online cắt `moveLog` rồi dựng lại `board`/`cells`/`region`/`lastMove`/`winLine`/kết quả, giữ nguyên `first_player`. Không đổi schema DB: `matches.moves` lưu danh sách cuối cùng sau các lần đi lại. Trong lúc chờ đối thủ, server khoá `game:move`, dừng `turnDeadline` và cấp lại **đủ** thời gian lượt sau khi phân xử.
 - **Không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng.
 - **Email là tuỳ chọn, không phải đăng nhập.** Không có đăng nhập bằng email/OAuth. Email chỉ xác thực và khôi phục mật khẩu; khi chưa cấu hình mail, mọi tính năng cũ vẫn chạy và email đăng ký là tuỳ chọn. Link trong thư luôn dùng `PUBLIC_URL`, token chỉ nằm trong fragment và DB chỉ lưu SHA-256.
 - **Đổi mật khẩu và xoá tài khoản vẫn cần mật khẩu hiện tại.** Quên mật khẩu dùng link email dùng một lần; tài khoản không có email đã xác thực được hỗ trợ bằng script cục bộ `npm run admin:reset-password`.

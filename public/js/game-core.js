@@ -351,6 +351,94 @@ export function infiniteResult(state, maxMoves = INFINITE.maxMoves) {
   return { winner: null, line: null, draw: false, finished: false, limit: false };
 }
 
+// ---------------------------------------------------------------------------
+// Di lai (undo): chi dung danh sach nuoc di lam nguon su that
+// ---------------------------------------------------------------------------
+
+/**
+ * So nuoc can GIU LAI de quay ve ngay truoc nuoc gan nhat cua nguoi xin.
+ * Tra ve null khi khong the di lai (khong co nuoc nao cua nguoi do).
+ *
+ * Vi du: moves [A, B, A, B], xin A -> giu 2 (bo A3 va B4).
+ * moves [A, B], xin B -> giu 1 (bo B2).
+ */
+export function undoTargetCount(moves, requesterSymbol) {
+  if (!Array.isArray(moves)) return null;
+  if (requesterSymbol !== 'A' && requesterSymbol !== 'B') return null;
+  for (let i = moves.length - 1; i >= 0; i -= 1) {
+    const move = moves[i];
+    if (move && move.s === requesterSymbol) return i;
+  }
+  return null;
+}
+
+/**
+ * Tra ve trang thai MOI sau khi di lai, khong sua state dau vao.
+ * Ho tro ca ban 3x3 (nuoc di {i,s}) va ban vo cuc ({x,y,s}).
+ * - board/cells duoc dung lai tu moves con lai
+ * - turn = nguoi xin, lastMove lay tu nuoc cuoi con lai
+ * - region cua ban ∞ tinh lai tu moves (co the nho lai)
+ * Tra ve null neu khong the di lai hoac van da ket thuc.
+ */
+export function applyUndo(state, requesterSymbol) {
+  if (!state || typeof state !== 'object') return null;
+  if (state.finished === true || state.status === 'finished') return null;
+
+  const moves = Array.isArray(state.moves) ? state.moves : null;
+  const keep = undoTargetCount(moves, requesterSymbol);
+  if (keep === null) return null;
+
+  const remaining = moves.slice(0, keep).map((move) => ({ ...move }));
+  const infinite =
+    state.mode === INFINITE_SIZE ||
+    isInfiniteSize(state.size) ||
+    (state.board === null && state.cells instanceof Map);
+
+  if (infinite) {
+    const rebuilt = infiniteStateFromMoves(remaining);
+    const last = rebuilt.moves[rebuilt.moves.length - 1] || null;
+    return {
+      ...state,
+      mode: INFINITE_SIZE,
+      size: INFINITE_SIZE,
+      board: null,
+      cells: rebuilt.cells,
+      moves: rebuilt.moves,
+      region: rebuilt.region,
+      turn: requesterSymbol,
+      lastMove: last ? { x: last.x, y: last.y } : null,
+      winner: null,
+      winLine: null,
+      draw: false,
+      finished: false,
+    };
+  }
+
+  const size = normalizeSize(state.size ?? sizeFromBoard(state.board));
+  const board = createBoard(size);
+  for (const move of remaining) {
+    if (!Number.isInteger(move.i)) continue;
+    if (move.i < 0 || move.i >= board.length) continue;
+    if (move.s !== 'A' && move.s !== 'B') continue;
+    board[move.i] = move.s;
+  }
+
+  const result = getResult(board, size, state.winLength ?? winLengthFor(size));
+  const last = remaining[remaining.length - 1] || null;
+  return {
+    ...state,
+    size,
+    board,
+    moves: remaining,
+    turn: requesterSymbol,
+    lastMove: last && Number.isInteger(last.i) ? last.i : null,
+    winner: result.winner,
+    winLine: result.line,
+    draw: result.draw,
+    finished: result.finished,
+  };
+}
+
 /** Tat ca o trong trong vung hien tai (server dung khi het gio luot). */
 export function getInfiniteEmptyCells(cells, region) {
   const empty = [];

@@ -261,6 +261,34 @@ export function shakeCell(index) {
   window.setTimeout(() => cell.classList.remove('shake'), 420);
 }
 
+/**
+ * Hieu ung quan bi bo khi di lai: clone meo cu roi khoi o trong ~220ms.
+ * entries: [{ index, symbol }]. Bo qua neu nguoi dung giam chuyen dong.
+ */
+export function animateRemovedCats(entries = []) {
+  if (!boardWrap || prefersReducedMotion() || !Array.isArray(entries) || !entries.length) {
+    return;
+  }
+  const wrapRect = boardWrap.getBoundingClientRect();
+  for (const entry of entries) {
+    const cell = cells[entry?.index];
+    const symbol = entry?.symbol;
+    if (!cell || !symbol || typeof catFor !== 'function') continue;
+    const rect = cell.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    const ghost = document.createElement('div');
+    ghost.className = 'undo-ghost';
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.left = `${rect.left - wrapRect.left}px`;
+    ghost.style.top = `${rect.top - wrapRect.top}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.innerHTML = catFor(symbol, 'normal');
+    boardWrap.appendChild(ghost);
+    window.setTimeout(() => ghost.remove(), 260);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Duong len thang (win line)
 // ---------------------------------------------------------------------------
@@ -472,6 +500,15 @@ export function toast(message, type = 'info', duration = 2800) {
   toastTimer = window.setTimeout(() => {
     el.className = 'toast';
   }, duration);
+}
+
+/** An toast ngay lap tuc (dung khi bong bong tu choi can cho trong). */
+export function hideToast() {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  window.clearTimeout(toastTimer);
+  toastTimer = null;
+  el.className = 'toast instant';
 }
 
 export function setBanner(message, type = 'warn') {

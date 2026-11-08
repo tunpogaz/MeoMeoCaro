@@ -151,6 +151,14 @@ function chime() {
   tone(880, now + 0.1, 0.24, 'triangle', 0.07);
 }
 
+function undoWhoosh() {
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  tone(660, now, 0.16, 'sine', 0.07, 430);
+  tone(520, now + 0.07, 0.18, 'triangle', 0.05, 340);
+  tone(300, now + 0.15, 0.12, 'sine', 0.04);
+}
+
 const PLAYERS = {
   meow,
   click,
@@ -160,6 +168,7 @@ const PLAYERS = {
   error: errorSound,
   emote: popSound,
   join: chime,
+  undo: undoWhoosh,
 };
 
 export function play(name) {

@@ -73,6 +73,8 @@ const FORWARDED_EVENTS = [
   'room:opponent-reconnected',
   'room:closed',
   'room:replaced',
+  'undo:requested',
+  'undo:resolved',
   'error:message',
 ];
 
@@ -189,6 +191,18 @@ export class OnlineClient {
 
   sendEmote(roomId, emote) {
     return this.#emitAck('emote:send', { roomId, emote });
+  }
+
+  requestUndo(roomId, moveCount) {
+    return this.#emitAck('undo:request', { roomId, moveCount });
+  }
+
+  respondUndo(roomId, accept) {
+    return this.#emitAck('undo:respond', { roomId, accept: accept === true });
+  }
+
+  cancelUndo(roomId) {
+    return this.#emitAck('undo:cancel', { roomId });
   }
 
   leave(roomId) {

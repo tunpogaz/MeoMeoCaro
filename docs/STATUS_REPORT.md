@@ -199,3 +199,43 @@ Phần trên là ảnh chụp bàn giao trước đợt #5. Đợt này sửa t�
 - Gửi thư phụ thuộc nhà cung cấp bên ngoài; Gmail có giới hạn/ngày, Resend yêu cầu xác minh domain.
 - Ứng dụng vẫn chạy một instance; phòng online nằm trong RAM.
 - Bộ test tự động chạy SQLite; PostgreSQL cần chạy tay với `DATABASE_URL` test nếu muốn xác nhận.
+
+---
+
+## Rà soát trước khi thêm Đi lại
+
+> **Cập nhật sau khi thêm Đi lại (2026-11-08):** tính năng đã hoàn tất và có test; xem `README.md` mục **Đi lại (Undo)** và `docs/FEATURES.md` mục 4/8/11 để biết sự kiện, mã lỗi và giới hạn mới. Các ghi nhận bên dưới là ảnh chụp **trước** khi thêm tính năng, giữ nguyên để đối chiếu. (2026-11-08)
+
+Phạm vi: đọc lại mã hiện tại, chạy `npm test`, chạy server thật và smoke trình duyệt trên bản có 108 test. Không sửa mã nguồn trong bước này.
+
+### Kết quả chạy thật
+
+- `npm test`: **108/108 đạt** — ai 27, wake 8, server 29, auth 15, history 8, password-reset 21.
+- Server dev cổng 3210 (SQLite tạm): `GET /health` → 200 `{"status":"ok"}`; `GET /api/config` → `{"ok":true,"mailEnabled":true}` (đúng vì `MAIL_PROVIDER=console` ngoài production).
+- Smoke trình duyệt: trang chủ, chọn chế độ, AI 3×3 (máy đi trước, bàn khoá khi đang nghĩ rồi trả nước), 2 người cùng máy (đánh 3 nước, đổi lượt đúng). Không thấy lỗi console/pageerror.
+- Hợp đồng cỡ bàn đã đúng: `normalizeBoardSize` nhận `3`, `"3"`, `"infinite"`; giá trị khác trả `UNSUPPORTED_BOARD_SIZE` (`server.js:568-573`).
+- Lịch sử/thống kê đã ẩn ván 4×4–8×8: `VISIBLE_SIZES` và `size_key IN ('3','infinite')` (`history.js:110,161,181`).
+
+### Lỗi và rủi ro liên quan trực tiếp tới Đi lại
+
+| Mức | Vấn đề | Bằng chứng | Hướng xử lý |
+| --- | --- | --- | --- |
+| Chặn tính năng | Ván 3×3 phía client không lưu danh sách nước đi; chỉ có `board` bị sửa tại chỗ | `main.js` `startAIGame`/`startLocalGame`/`playLocalMove` | Thêm `game.moves` dạng `{i,s}`, dựng bàn lại từ `moves` |
+| Chặn tính năng | `computeRegion(moves)` chỉ mở rộng, không thu nhỏ | `game-core.js` `computeRegion` | Tính vùng từ đầu mỗi lần dựng lại; undo có thể làm vùng nhỏ lại |
+| Chặn tính năng | Server không có trạng thái/khóa cho yêu cầu đi lại | `server.js` `createRoom`, `publicState`, `game:move` | Thêm `room.undo`, bộ đếm, cooldown, timer; chặn `game:move` khi đang chờ |
+| Chặn tính năng | Client online chưa chuyển tiếp sự kiện undo | `online.js` `FORWARDED_EVENTS` | Thêm `undo:requested`, `undo:resolved` và 3 method mới |
+| Chặn tính năng | Chưa có giao diện nút "Đi lại"/"Xin đi lại", dialog, banner, hiệu ứng | `index.html` màn chơi; `ui.js` | Thêm nút ≥44px, `alertdialog`, banner, hiệu ứng biến mất |
+| Cao | Lịch sử dùng `moveLog`; nếu undo chỉ sửa bàn mà không cắt `moveLog`/`moves` thì replay sai | `history.js` `matchMoves`, `saveMatchRecord` | Cắt cả hai ngay khi chấp nhận undo |
+| Cao | AI có thể trả kết quả muộn sau khi người chơi bấm đi lại | `main.js` `scheduleAIMove` | Tăng token, hủy worker/timer, kiểm tra lại trước khi áp dụng |
+| Cao | Timer lượt đang chạy trong lúc chờ đối thủ trả lời | `server.js` vòng `setInterval` dùng `turnDeadline` | Đặt `turnDeadline=null` khi chờ, khôi phục đủ thời gian khi xong |
+| Trung bình | F5 khi đang chờ sẽ mất dialog nếu chỉ dựa vào sự kiện tạm | `publicState` chưa có `undo` | Đưa `undo` + số lượt còn lại vào `room:state` |
+| Trung bình | Đóng phòng/ngắt kết nối có thể để timer undo sót | `destroyRoom`, `markDisconnected` | Hủy timer undo ở mọi nhánh kết thúc |
+| Trung bình | Chưa có hiệu ứng quân biến mất, chưa tôn trọng giảm chuyển động | `ui.js` `renderBoard` | Lớp phủ SVG mờ dần ~200ms, bỏ qua nếu `prefers-reduced-motion` |
+| Thấp | Service worker còn cache cũ nếu thêm file/JS mới | `public/sw.js` `meo-meo-caro-v9` | Tăng version, thêm file mới, không giữ file đã xoá |
+| Thấp | Phòng online nằm trong RAM, mất khi restart | `server.js` `rooms` | Giới hạn đã biết, không xử lý trong đợt này |
+
+### Ghi chú thiết kế
+
+- Server đã có `room.moveLog` cho cả hai cỡ bàn và giới hạn 2000 nước; có thể dùng làm nguồn sự thật duy nhất cho undo.
+- `state.ai.token` và `aiClient.cancel()` đã có sẵn cơ chế chống kết quả AI cũ; chỉ cần gọi đúng chỗ.
+- `publicState(room, youKey)` đã nhận danh tính người xem, thuận tiện để trả `isYou`, số lượt xin còn lại và cooldown riêng.

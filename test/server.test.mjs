@@ -999,6 +999,584 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// Undo suite (request/accept/decline/limits/rejoin/disconnect)
+// ---------------------------------------------------------------------------
+const undoServer = await startServer({ UNDO_TIMEOUT_MS: '4000', UNDO_COOLDOWN_MS: '600' });
+const undoSockets = [];
+
+async function createUndoPair(size = 3) {
+  const host = await connect(undoServer.port);
+  const guest = await connect(undoServer.port);
+  undoSockets.push(host, guest);
+  const hostTracker = tracker(host);
+  const guestTracker = tracker(guest);
+  const created = await request(host, 'room:create', {
+    name: 'Mèo Đi Lại',
+    avatar: 'orange',
+    size,
+  });
+  assert.equal(created.ok, true, JSON.stringify(created));
+  const joined = await request(guest, 'room:join', {
+    roomId: created.roomId,
+    name: 'Mèo Lêu Lêu',
+    avatar: 'gray',
+  });
+  assert.equal(joined.ok, true, JSON.stringify(joined));
+  const playing = await hostTracker.until((s) => s.status === 'playing', 'undo round');
+  return {
+    host,
+    guest,
+    roomId: created.roomId,
+    keyHost: created.playerKey,
+    keyGuest: joined.playerKey,
+    hostTracker,
+    guestTracker,
+    starter: playing.turn,
+  };
+}
+
+function trackerFor(pair, symbol) {
+  return symbol === 'A' ? pair.hostTracker : pair.guestTracker;
+}
+
+async function requestUndo(pair, symbol, moveCount) {
+  const socket = socketFor(pair, symbol);
+  return request(socket, 'undo:request', { roomId: pair.roomId, moveCount });
+}
+
+async function respondUndo(pair, symbol, accept) {
+  const socket = socketFor(pair, symbol);
+  return request(socket, 'undo:respond', { roomId: pair.roomId, accept });
+}
+
+async function cancelUndoRequest(pair, symbol) {
+  const socket = socketFor(pair, symbol);
+  return request(socket, 'undo:cancel', { roomId: pair.roomId });
+}
+
+try {
+  const pair = await createUndoPair(3);
+  const W = pair.starter;
+  const L = otherSymbol(W);
+  const Ws = () => socketFor(pair, W);
+  const Ls = () => socketFor(pair, L);
+
+  await test('undo request freezes both players and pauses the turn clock', async () => {
+    await move(Ws(), 0);
+    await move(Ls(), 3);
+    await move(Ws(), 1);
+
+    const requestedHost = nextEvent(pair.host, 'undo:requested');
+    const requestedGuest = nextEvent(pair.guest, 'undo:requested');
+    const ack = await requestUndo(pair, L, 3);
+    const [forHost, forGuest] = await Promise.all([requestedHost, requestedGuest]);
+
+    assert.equal(ack.ok, true, JSON.stringify(ack));
+    assert.equal(ack.undoLeft, 2);
+    assert.equal(forHost.fromSymbol, L);
+    assert.equal(forGuest.fromSymbol, L);
+    assert.equal(forHost.moveCount, 3);
+    assert.equal(forHost.fromName, L === 'A' ? 'Mèo Đi Lại' : 'Mèo Lêu Lêu');
+
+    const pendingRequester = await trackerFor(pair, L).until(
+      (s) => s.status === 'playing' && s.undo !== null,
+      'requester pending state'
+    );
+    assert.equal(pendingRequester.undo.byYou, true);
+    assert.equal(pendingRequester.undo.fromSymbol, L);
+    assert.equal(pendingRequester.undo.moveCount, 3);
+    assert.ok(pendingRequester.undo.expiresAt > Date.now());
+    assert.ok(pendingRequester.undo.expiresIn > 0);
+    assert.equal(pendingRequester.undoLeft, 2);
+    assert.equal(pendingRequester.turnEndsIn, null);
+    assert.equal(pendingRequester.moveCount, 3);
+
+    const pendingOpponent = await trackerFor(pair, W).until(
+      (s) => s.status === 'playing' && s.undo !== null,
+      'opponent pending state'
+    );
+    assert.equal(pendingOpponent.undo.byYou, false);
+    assert.equal(pendingOpponent.turnEndsIn, null);
+
+    for (const socket of [Ws(), Ls()]) {
+      const blocked = await request(socket, 'game:move', { index: 6 });
+      assert.equal(blocked.ok, false);
+      assert.equal(blocked.code, 'UNDO_PENDING');
+    }
+
+    const resolvedHost = nextEvent(pair.host, 'undo:resolved');
+    const resolvedGuest = nextEvent(pair.guest, 'undo:resolved');
+    const accepted = await respondUndo(pair, W, true);
+    const [forA, forB] = await Promise.all([resolvedHost, resolvedGuest]);
+    assert.equal(accepted.ok, true, JSON.stringify(accepted));
+    assert.equal(forA.result, 'accepted');
+    assert.equal(forB.result, 'accepted');
+    assert.equal(forA.bySymbol, W);
+
+    const after = await trackerFor(pair, L).until(
+      (s) => s.undo === null && s.moveCount === 1,
+      'accepted rewind'
+    );
+    assert.equal(after.board[0], W);
+    assert.equal(after.board.filter(Boolean).length, 1);
+    assert.equal(after.turn, L);
+    assert.equal(after.lastMove, 0);
+    assert.equal(after.winLine, null);
+    assert.equal(after.status, 'playing');
+    assert.ok(after.turnEndsIn > 0);
+    assert.ok(after.turnEndsIn <= after.turnMs);
+    assert.equal(after.undoLeft, 2);
+    assert.equal(after.score[W], 0);
+    assert.equal(after.score[L], 0);
+  });
+
+  await test('undo decline keeps the board, sets cooldown and blocks the same position', async () => {
+    await move(Ls(), 4);
+    await move(Ws(), 5);
+
+    const requested = nextEvent(pair.guest, 'undo:requested');
+    const reqAck = await requestUndo(pair, L, 3);
+    assert.equal(reqAck.ok, true, JSON.stringify(reqAck));
+    await requested;
+
+    const resolved = nextEvent(pair.guest, 'undo:resolved');
+    const declined = await respondUndo(pair, W, false);
+    const payload = await resolved;
+    assert.equal(declined.ok, true, JSON.stringify(declined));
+    assert.equal(payload.result, 'declined');
+    assert.equal(payload.bySymbol, W);
+
+    const after = await trackerFor(pair, L).until(
+      (s) => s.undo === null,
+      'declined state'
+    );
+    assert.equal(after.status, 'playing');
+    assert.equal(after.moveCount, 3);
+    assert.equal(after.board[4], L);
+    assert.equal(after.board[5], W);
+    assert.equal(after.lastMove, 5);
+    assert.equal(after.undoLeft, 1);
+    assert.equal(after.undoDeclinedHere, true);
+    assert.ok(after.undoCooldownUntil > Date.now());
+
+    const tooSoon = await requestUndo(pair, L, 3);
+    assert.equal(tooSoon.ok, false);
+    assert.equal(tooSoon.code, 'UNDO_COOLDOWN');
+
+    await sleep(700);
+    const sameSpot = await requestUndo(pair, L, 3);
+    assert.equal(sameSpot.ok, false);
+    assert.equal(sameSpot.code, 'UNDO_ALREADY_DECLINED_HERE');
+
+    await move(Ls(), 6);
+    await move(Ws(), 7);
+    const nextSpot = await requestUndo(pair, L, 5);
+    assert.equal(nextSpot.ok, true, JSON.stringify(nextSpot));
+
+    const cancelled = nextEvent(pair.guest, 'undo:resolved');
+    const cancelAck = await cancelUndoRequest(pair, L);
+    const cancelPayload = await cancelled;
+    assert.equal(cancelAck.ok, true);
+    assert.equal(cancelPayload.result, 'cancelled');
+    assert.equal(cancelPayload.fromSymbol, L);
+  });
+
+  await test('undo request limit is three per round and cancel counts', async () => {
+    const limitPair = await createUndoPair(3);
+    const PW = limitPair.starter;
+    const PL = otherSymbol(PW);
+    const PWs = () => socketFor(limitPair, PW);
+    const PLs = () => socketFor(limitPair, PL);
+
+    await move(PWs(), 0);
+    await move(PLs(), 4);
+    await move(PWs(), 1);
+    await move(PLs(), 8);
+
+    for (let index = 0; index < 3; index += 1) {
+      const ack = await requestUndo(limitPair, PL, 4);
+      assert.equal(ack.ok, true, `request ${index + 1}: ${JSON.stringify(ack)}`);
+      assert.equal(ack.undoLeft, 2 - index);
+      const resolved = nextEvent(socketFor(limitPair, PL), 'undo:resolved');
+      const cancel = await cancelUndoRequest(limitPair, PL);
+      assert.equal(cancel.ok, true);
+      const payload = await resolved;
+      assert.equal(payload.result, 'cancelled');
+    }
+
+    const blocked = await requestUndo(limitPair, PL, 4);
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.code, 'UNDO_LIMIT_REACHED');
+
+    const state = await trackerFor(limitPair, PL).until(
+      (s) => s.undoLeft === 0,
+      'limit state'
+    );
+    assert.equal(state.undoLeft, 0);
+    assert.equal(state.undo, null);
+    assert.equal(state.moveCount, 4);
+  });
+
+  await test('undo rejects no-move, finished, offline and invalid responders', async () => {
+    const guardPair = await createUndoPair(3);
+    const GW = guardPair.starter;
+    const GL = otherSymbol(GW);
+    const GWs = () => socketFor(guardPair, GW);
+    const GLs = () => socketFor(guardPair, GL);
+
+    const noMove = await requestUndo(guardPair, GW, 0);
+    assert.equal(noMove.ok, false);
+    assert.equal(noMove.code, 'UNDO_NO_MOVES');
+
+    await move(GWs(), 0);
+    await move(GLs(), 3);
+
+    const stale = await request(GWs(), 'undo:request', {
+      roomId: guardPair.roomId,
+      moveCount: 999,
+    });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.code, 'STALE_STATE');
+
+    const wrongRoom = await request(GWs(), 'undo:request', {
+      roomId: 'ZZZZZ',
+      moveCount: 2,
+    });
+    assert.equal(wrongRoom.ok, false);
+    assert.equal(wrongRoom.code, 'STALE_STATE');
+
+    const pending = nextEvent(guardPair.host, 'undo:requested');
+    const req = await requestUndo(guardPair, GL, 2);
+    assert.equal(req.ok, true);
+    await pending;
+
+    const selfAnswer = await respondUndo(guardPair, GL, true);
+    assert.equal(selfAnswer.ok, false);
+    assert.equal(selfAnswer.code, 'UNDO_NOT_AVAILABLE');
+
+    const unrelated = await connect(undoServer.port);
+    undoSockets.push(unrelated);
+    const outsider = await request(unrelated, 'undo:respond', {
+      roomId: guardPair.roomId,
+      accept: true,
+    });
+    assert.equal(outsider.ok, false);
+    assert.equal(outsider.code, 'notInRoom');
+    closeSocket(unrelated);
+
+    const notBoolean = await request(GWs(), 'undo:respond', {
+      roomId: guardPair.roomId,
+      accept: 'yes',
+    });
+    assert.equal(notBoolean.ok, false);
+    assert.equal(notBoolean.code, 'STALE_STATE');
+
+    const stillPending = await trackerFor(guardPair, GW).until(
+      (s) => s.undo !== null,
+      'still pending'
+    );
+    assert.equal(stillPending.undo.byYou, false);
+
+    const cancelledByOpponent = await cancelUndoRequest(guardPair, GW);
+    assert.equal(cancelledByOpponent.ok, true);
+    assert.equal(cancelledByOpponent.ignored, true);
+    const stillThere = await trackerFor(guardPair, GW).until(
+      (s) => s.undo !== null,
+      'cancel by opponent ignored'
+    );
+    assert.equal(stillThere.undo.fromSymbol, GL);
+
+    const cancelOwn = nextEvent(guardPair.host, 'undo:resolved');
+    await cancelUndoRequest(guardPair, GL);
+    const cancelPayload = await cancelOwn;
+    assert.equal(cancelPayload.result, 'cancelled');
+
+    await move(GWs(), 1);
+    await move(GLs(), 4);
+    const finishedPromise = nextEvent(guardPair.host, 'game:over');
+    await move(GWs(), 2);
+    const finished = await finishedPromise;
+    assert.equal(finished.reason, 'win');
+    assert.equal(finished.winner, GW);
+
+    const finishedReq = await requestUndo(guardPair, GL, 5);
+    assert.equal(finishedReq.ok, false);
+    assert.equal(finishedReq.code, 'UNDO_NOT_AVAILABLE');
+
+    const offlinePair = await createUndoPair(3);
+    const OW = offlinePair.starter;
+    const OL = otherSymbol(OW);
+    await move(socketFor(offlinePair, OW), 0);
+    await move(socketFor(offlinePair, OL), 3);
+    const gone = nextEvent(socketFor(offlinePair, OW), 'room:opponent-disconnected');
+    socketFor(offlinePair, OL).disconnect();
+    await gone;
+    await sleep(120);
+    const offlineReq = await requestUndo(offlinePair, OW, 2);
+    assert.equal(offlineReq.ok, false);
+    assert.equal(offlineReq.code, 'OPPONENT_OFFLINE');
+  });
+
+  await test('rejoin during a pending undo keeps it; disconnect aborts it', async () => {
+    const rejoinPair = await createUndoPair(3);
+    const RW = rejoinPair.starter;
+    const RL = otherSymbol(RW);
+    await move(socketFor(rejoinPair, RW), 0);
+    await move(socketFor(rejoinPair, RL), 4);
+
+    const pending = nextEvent(socketFor(rejoinPair, RW), 'undo:requested');
+    const req = await requestUndo(rejoinPair, RL, 2);
+    assert.equal(req.ok, true, JSON.stringify(req));
+    await pending;
+
+    const beforeReplace = await trackerFor(rejoinPair, RL).until(
+      (s) => s.undo !== null,
+      'pending before rejoin'
+    );
+    assert.equal(beforeReplace.turnEndsIn, null);
+
+    const oldSocket = socketFor(rejoinPair, RL);
+    const replaced = nextEvent(oldSocket, 'room:replaced');
+    const key = RL === 'A' ? rejoinPair.keyHost : rejoinPair.keyGuest;
+    const fresh = await connect(undoServer.port);
+    undoSockets.push(fresh);
+    const freshTracker = tracker(fresh);
+    const rejoin = await request(fresh, 'room:rejoin', {
+      roomId: rejoinPair.roomId,
+      playerKey: key,
+    });
+    assert.equal(rejoin.ok, true, JSON.stringify(rejoin));
+    await replaced;
+
+    assert.ok(rejoin.state.undo, 'pending undo should survive socket rejoin');
+    assert.equal(rejoin.state.undo.byYou, true);
+    assert.equal(rejoin.state.undo.fromSymbol, RL);
+    assert.equal(rejoin.state.undo.moveCount, 2);
+    assert.equal(rejoin.state.undoLeft, 2);
+    assert.equal(rejoin.state.turnEndsIn, null);
+
+    if (RL === 'A') {
+      rejoinPair.host = fresh;
+      rejoinPair.hostTracker = freshTracker;
+    } else {
+      rejoinPair.guest = fresh;
+      rejoinPair.guestTracker = freshTracker;
+    }
+
+    const state = await freshTracker.until(
+      (s) => s.status === 'playing' && s.undo !== null,
+      'rejoined pending state'
+    );
+    assert.equal(state.undo.byYou, true);
+    assert.equal(state.turnEndsIn, null);
+
+    const accepted = nextEvent(fresh, 'undo:resolved');
+    const ok = await respondUndo(rejoinPair, RW, true);
+    assert.equal(ok.ok, true);
+    const payload = await accepted;
+    assert.equal(payload.result, 'accepted');
+    const after = await freshTracker.until(
+      (s) => s.undo === null && s.moveCount === 1,
+      'rejoined accepted state'
+    );
+    assert.equal(after.turn, RL);
+    assert.ok(after.turnEndsIn > 0);
+
+    const abortPair = await createUndoPair(3);
+    const AW = abortPair.starter;
+    const AL = otherSymbol(AW);
+    await move(socketFor(abortPair, AW), 0);
+    await move(socketFor(abortPair, AL), 4);
+    const abortRequested = nextEvent(socketFor(abortPair, AW), 'undo:requested');
+    const abortReq = await requestUndo(abortPair, AL, 2);
+    assert.equal(abortReq.ok, true);
+    await abortRequested;
+
+    const aborted = nextEvent(socketFor(abortPair, AW), 'undo:resolved');
+    const offline = nextEvent(socketFor(abortPair, AW), 'room:opponent-disconnected');
+    socketFor(abortPair, AL).disconnect();
+    const [abortPayload] = await Promise.all([aborted, offline]);
+    assert.equal(abortPayload.result, 'aborted');
+
+    const cleared = await trackerFor(abortPair, AW).until(
+      (s) => s.undo === null,
+      'aborted pending cleared'
+    );
+    assert.equal(cleared.status, 'playing');
+    assert.equal(cleared.moveCount, 2);
+    assert.equal(cleared.board[0], AW);
+    assert.equal(cleared.board[4], AL);
+    assert.equal(cleared.turn, AW);
+  });
+
+  await test('accepted undo is stored as final moves in match history', async () => {
+    const cookie = await registerAccount(undoServer.port, 'Meo_Undo_History', 'Mèo Sử');
+    const accountHost = await connect(undoServer.port, { Cookie: cookie });
+    undoSockets.push(accountHost);
+    const hostTracker = tracker(accountHost);
+    const created = await request(accountHost, 'room:create', {
+      name: 'Mèo Sử',
+      avatar: 'calico',
+      size: 3,
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    const guest = await connect(undoServer.port);
+    undoSockets.push(guest);
+    const guestTracker = tracker(guest);
+    const joined = await request(guest, 'room:join', {
+      roomId: created.roomId,
+      name: 'Mèo Khách Sử',
+      avatar: 'gray',
+    });
+    assert.equal(joined.ok, true, JSON.stringify(joined));
+    const playing = await hostTracker.until((s) => s.status === 'playing', 'history round');
+    const AH = playing.turn;
+    const AG = otherSymbol(AH);
+    const AHs = AH === 'A' ? accountHost : guest;
+    const AGs = AG === 'A' ? accountHost : guest;
+
+    await move(AHs, 0);
+    await move(AGs, 3);
+    await move(AHs, 1);
+    await move(AGs, 4);
+
+    const pending = nextEvent(AHs, 'undo:requested');
+    const req = await request(AHs, 'undo:request', { roomId: created.roomId, moveCount: 4 });
+    assert.equal(req.ok, true, JSON.stringify(req));
+    await pending;
+
+    const resolved = nextEvent(AHs, 'undo:resolved');
+    const answer = await request(AGs, 'undo:respond', {
+      roomId: created.roomId,
+      accept: true,
+    });
+    assert.equal(answer.ok, true);
+    assert.equal((await resolved).result, 'accepted');
+
+    const rewound = await hostTracker.until(
+      (s) => s.undo === null && s.moveCount === 2,
+      'history rewound'
+    );
+    assert.equal(rewound.board[0], AH);
+    assert.equal(rewound.board[3], AG);
+    assert.equal(rewound.board[4], null);
+    assert.equal(rewound.turn, AH);
+
+    const over = nextEvent(AHs, 'game:over');
+    await move(AHs, 1);
+    await move(AGs, 5);
+    await move(AHs, 2);
+    const result = await over;
+    assert.equal(result.winner, AH);
+    await sleep(400);
+
+    const listRes = await fetch(
+      `http://127.0.0.1:${undoServer.port}/api/history?limit=50`,
+      { headers: { Cookie: cookie } }
+    );
+    assert.equal(listRes.status, 200);
+    const list = await listRes.json();
+    const items = list.items.filter((item) => item.roomCode === created.roomId);
+    assert.equal(items.length, 1, 'match should be saved exactly once');
+    assert.equal(items[0].totalMoves, 5);
+
+    const detailRes = await fetch(
+      `http://127.0.0.1:${undoServer.port}/api/history/${items[0].id}`,
+      { headers: { Cookie: cookie } }
+    );
+    assert.equal(detailRes.status, 200);
+    const detail = await detailRes.json();
+    assert.deepEqual(
+      detail.match.moves.map((move) => (typeof move === 'number' ? move : move.i)),
+      [0, 3, 1, 5, 2]
+    );
+    assert.equal(detail.match.result, AH === 'A' ? 'A' : 'B');
+    void guestTracker;
+  });
+} finally {
+  for (const socket of undoSockets) closeSocket(socket);
+  await stopServer(undoServer);
+}
+
+// ---------------------------------------------------------------------------
+// Undo timeout suite (short pending timer)
+// ---------------------------------------------------------------------------
+const undoTimeout = await startServer({ UNDO_TIMEOUT_MS: '350', UNDO_COOLDOWN_MS: '500' });
+
+try {
+  await test('undo timeout resolves neutrally, not as a decline', async () => {
+    const host = await connect(undoTimeout.port);
+    const guest = await connect(undoTimeout.port);
+    const hostTracker = tracker(host);
+    const guestTracker = tracker(guest);
+    const created = await request(host, 'room:create', {
+      name: 'Mèo Chờ Lâu',
+      avatar: 'cream',
+      size: 3,
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    const joined = await request(guest, 'room:join', {
+      roomId: created.roomId,
+      name: 'Mèo Im Lặng',
+      avatar: 'black',
+    });
+    assert.equal(joined.ok, true, JSON.stringify(joined));
+    const playing = await hostTracker.until((s) => s.status === 'playing', 'timeout round');
+    const W = playing.turn;
+    const L = otherSymbol(W);
+    const Ws = W === 'A' ? host : guest;
+    const Ls = L === 'A' ? host : guest;
+    const Lt = L === 'A' ? hostTracker : guestTracker;
+
+    await move(Ws, 0);
+    await move(Ls, 4);
+
+    const resolved = nextEvent(Ls, 'undo:resolved', 3000);
+    const req = await request(Ls, 'undo:request', {
+      roomId: created.roomId,
+      moveCount: 2,
+    });
+    assert.equal(req.ok, true, JSON.stringify(req));
+    const payload = await resolved;
+    assert.equal(payload.result, 'timeout');
+    assert.equal(payload.fromSymbol, L);
+
+    const after = await Lt.until(
+      (s) => s.undo === null && s.status === 'playing',
+      'timeout state',
+      3000
+    );
+    assert.equal(after.moveCount, 2);
+    assert.equal(after.board[0], W);
+    assert.equal(after.board[4], L);
+    assert.equal(after.lastMove, 4);
+    assert.equal(after.undoLeft, 2);
+    assert.equal(after.undoDeclinedHere, true);
+    assert.ok(after.undoCooldownUntil > Date.now());
+
+    const again = await request(Ls, 'undo:request', {
+      roomId: created.roomId,
+      moveCount: 2,
+    });
+    assert.equal(again.ok, false);
+    assert.equal(again.code, 'UNDO_COOLDOWN');
+
+    await sleep(650);
+    const sameSpot = await request(Ls, 'undo:request', {
+      roomId: created.roomId,
+      moveCount: 2,
+    });
+    assert.equal(sameSpot.ok, false);
+    assert.equal(sameSpot.code, 'UNDO_ALREADY_DECLINED_HERE');
+
+    closeSocket(host);
+    closeSocket(guest);
+  });
+} finally {
+  await stopServer(undoTimeout);
+}
+
+// ---------------------------------------------------------------------------
 // Infinite move-limit suite (small technical limit to force a draw)
 // ---------------------------------------------------------------------------
 const infLimit = await startServer({ INFINITE_MAX_MOVES: '6' });

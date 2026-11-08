@@ -740,6 +740,25 @@
         <p id="game-status" class="game-status" aria-live="polite"></p>
         <p id="game-record" class="game-record" hidden></p>
 
+        <div class="game-tools" id="game-tools" hidden>
+          <button id="btn-undo" class="btn secondary undo-btn" type="button" hidden>
+            <span class="undo-icon" aria-hidden="true">↺</span>
+            <span id="undo-label"></span>
+            <span id="undo-count" class="undo-count" hidden></span>
+          </button>
+          <span id="undo-hint" class="sr-only" aria-live="polite"></span>
+        </div>
+
+        <div id="undo-banner" class="undo-banner" role="status" hidden>
+          <span id="undo-banner-text"></span>
+          <button id="btn-undo-cancel" class="btn mini ghost" type="button" data-i18n="undoCancel"></button>
+        </div>
+
+        <div id="undo-decline" class="undo-decline" role="status" aria-live="polite" hidden>
+          <span class="undo-decline-cat" id="undo-decline-cat" aria-hidden="true"></span>
+          <p id="undo-decline-text"></p>
+        </div>
+
         <div class="emote-bar" id="emote-bar" hidden>
           <span class="emote-label" data-i18n="emoteLabel"></span>
           <div class="emote-buttons" role="group" data-i18n-aria="emoteLabel">
@@ -819,6 +838,7 @@
             <li data-i18n="rule6"></li>
             <li data-i18n="rule7"></li>
             <li data-i18n="rule8"></li>
+            <li data-i18n="rule9"></li>
           </ul>
         </div>
       </div>
@@ -862,6 +882,25 @@
           <div class="modal-actions">
             <button id="invite-join" class="btn primary" type="button" data-i18n="joinGame"></button>
             <button id="invite-home" class="btn ghost" type="button" data-i18n="home"></button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="dialog-undo" class="modal undo-dialog" role="alertdialog" aria-modal="true" aria-labelledby="undo-dialog-title">
+      <div class="modal-inner">
+        <header class="modal-head">
+          <h2 id="undo-dialog-title" data-i18n="undoRequestTitle"></h2>
+        </header>
+        <div class="modal-body">
+          <div class="undo-dialog-cat" id="undo-dialog-cat" aria-hidden="true"></div>
+          <p id="undo-dialog-body" class="undo-dialog-body"></p>
+          <div class="undo-timer" aria-hidden="true">
+            <div class="undo-timer-fill" id="undo-dialog-fill"></div>
+          </div>
+          <div class="modal-actions">
+            <button id="undo-accept" class="btn primary" type="button" data-i18n="undoAccept"></button>
+            <button id="undo-decline-btn" class="btn ghost" type="button" data-i18n="undoDecline"></button>
           </div>
         </div>
       </div>

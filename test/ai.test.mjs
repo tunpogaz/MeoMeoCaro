@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import {
+  applyUndo,
   BOARD_CONFIGS,
   INFINITE,
   INFINITE_SIZE,
@@ -29,6 +30,7 @@ import {
   placeInfinite,
   regionHeight,
   regionWidth,
+  undoTargetCount,
   winLengthFor,
 } from '../public/js/game-core.js';
 import { chooseInfiniteMove, chooseMove } from '../public/js/ai.js';
@@ -169,6 +171,186 @@ check('place tu choi o ngoai pham vi / o da co quan', () => {
   assert.equal(place(board, 9, 'A'), false);
   assert.equal(place(board, 1.5, 'A'), false);
   assert.deepEqual(getEmptyCells(board), [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+// ---------------------------------------------------------------------------
+// Di lai (undo) — logic thuan
+// ---------------------------------------------------------------------------
+function finiteStateFromMoves(moves, size = 3) {
+  const board = createBoard(size);
+  for (const move of moves) board[move.i] = move.s;
+  return { size, board, moves: moves.map((move) => ({ ...move })) };
+}
+
+check('undo 3x3: bo nuoc cua nguoi xin, giu nuoc truoc do', () => {
+  const moves = [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+    { i: 1, s: 'A' },
+  ];
+  assert.equal(undoTargetCount(moves, 'A'), 2);
+  const state = finiteStateFromMoves(moves);
+  const next = applyUndo(state, 'A');
+
+  assert.ok(next);
+  assert.deepEqual(next.moves, [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+  ]);
+  assert.equal(next.turn, 'A');
+  assert.equal(next.lastMove, 4);
+  assert.equal(next.board[0], 'A');
+  assert.equal(next.board[4], 'B');
+  assert.equal(next.board[1], null);
+  assert.equal(next.finished, false);
+
+  // Khong sua state goc.
+  assert.equal(state.moves.length, 3);
+  assert.equal(state.board[1], 'A');
+  assert.equal(state.turn, undefined);
+});
+
+check('undo 3x3: doi thu da dap thi bo ca hai nuoc', () => {
+  const moves = [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+    { i: 1, s: 'A' },
+    { i: 2, s: 'B' },
+  ];
+  assert.equal(undoTargetCount(moves, 'A'), 2);
+  const next = applyUndo(finiteStateFromMoves(moves), 'A');
+  assert.deepEqual(next.moves, [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+  ]);
+  assert.equal(next.turn, 'A');
+  assert.equal(next.lastMove, 4);
+  assert.equal(next.board[2], null);
+});
+
+check('undo 3x3: nguoi di sau chi bo mot nuoc khi doi thu chua dap', () => {
+  const moves = [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+  ];
+  assert.equal(undoTargetCount(moves, 'B'), 1);
+  const next = applyUndo(finiteStateFromMoves(moves), 'B');
+  assert.deepEqual(next.moves, [{ i: 0, s: 'A' }]);
+  assert.equal(next.turn, 'B');
+  assert.equal(next.lastMove, 0);
+});
+
+check('undo 3x3: tu choi khi khong co nuoc cua nguoi xin', () => {
+  assert.equal(undoTargetCount([], 'A'), null);
+  assert.equal(undoTargetCount([{ i: 0, s: 'A' }], 'B'), null);
+  assert.equal(undoTargetCount(null, 'A'), null);
+  assert.equal(undoTargetCount([{ i: 0, s: 'A' }], 'C'), null);
+  assert.equal(applyUndo(finiteStateFromMoves([{ i: 0, s: 'A' }]), 'B'), null);
+  assert.equal(applyUndo(null, 'A'), null);
+});
+
+check('undo 3x3: tu choi khi van da ket thuc', () => {
+  const moves = [
+    { i: 0, s: 'A' },
+    { i: 3, s: 'B' },
+    { i: 1, s: 'A' },
+    { i: 4, s: 'B' },
+    { i: 2, s: 'A' },
+  ];
+  const state = finiteStateFromMoves(moves);
+  state.finished = true;
+  assert.equal(applyUndo(state, 'A'), null);
+  const state2 = finiteStateFromMoves(moves);
+  state2.status = 'finished';
+  assert.equal(applyUndo(state2, 'A'), null);
+});
+
+check('undo 3x3: nhieu lan lien tiep va nguoi di truoc khac nhau', () => {
+  const moves = [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+    { i: 1, s: 'A' },
+    { i: 2, s: 'B' },
+    { i: 3, s: 'A' },
+  ];
+  const once = applyUndo(finiteStateFromMoves(moves), 'A');
+  assert.equal(once.moves.length, 4);
+  const twice = applyUndo(once, 'A');
+  assert.equal(twice.moves.length, 2);
+  assert.equal(twice.lastMove, 4);
+  assert.deepEqual(twice.moves, [
+    { i: 0, s: 'A' },
+    { i: 4, s: 'B' },
+  ]);
+
+  const bFirst = applyUndo(
+    finiteStateFromMoves([
+      { i: 4, s: 'B' },
+      { i: 0, s: 'A' },
+    ]),
+    'B'
+  );
+  assert.deepEqual(bFirst.moves, []);
+  assert.equal(bFirst.lastMove, null);
+  assert.equal(bFirst.turn, 'B');
+  assert.equal(bFirst.board.every((cell) => cell === null), true);
+});
+
+check('undo ∞: dung lai cells, region nho lai, lastMove dung', () => {
+  const state = infiniteMoves([
+    { x: 4, y: 4, s: 'A' },
+    { x: 5, y: 5, s: 'B' },
+    { x: -4, y: -4, s: 'A' },
+  ]);
+  const before = { ...state.region };
+  assert.equal(state.region.minX, -6);
+
+  const next = applyUndo(state, 'A');
+  assert.ok(next);
+  assert.deepEqual(next.moves, [
+    { x: 4, y: 4, s: 'A' },
+    { x: 5, y: 5, s: 'B' },
+  ]);
+  assert.equal(next.turn, 'A');
+  assert.deepEqual(next.lastMove, { x: 5, y: 5 });
+  assert.equal(next.cells.has(cellKey(-4, -4)), false);
+  assert.equal(next.cells.get(cellKey(5, 5)), 'B');
+  assert.equal(next.region.minX, -4);
+  assert.equal(next.region.maxX, 7);
+  assert.ok(next.region.minX > before.minX, 'vung phai nho lai');
+  assert.equal(state.moves.length, 3);
+  assert.equal(state.cells.has(cellKey(-4, -4)), true);
+});
+
+check('undo ∞: doi thu da dap thi bo hai nuoc, giu dung luot', () => {
+  const state = infiniteMoves([
+    { x: 0, y: 0, s: 'A' },
+    { x: 1, y: 0, s: 'B' },
+    { x: 0, y: 1, s: 'A' },
+    { x: 1, y: 1, s: 'B' },
+  ]);
+  const next = applyUndo(state, 'A');
+  assert.deepEqual(next.moves, [
+    { x: 0, y: 0, s: 'A' },
+    { x: 1, y: 0, s: 'B' },
+  ]);
+  assert.equal(next.turn, 'A');
+  assert.deepEqual(next.lastMove, { x: 1, y: 0 });
+  assert.equal(next.cells.has(cellKey(0, 1)), false);
+});
+
+check('undo ∞: nguoi di truoc B quay ve ban trong', () => {
+  const state = infiniteMoves([
+    { x: 0, y: 0, s: 'B' },
+    { x: 1, y: 0, s: 'A' },
+  ]);
+  const next = applyUndo(state, 'B');
+  assert.deepEqual(next.moves, []);
+  assert.equal(next.turn, 'B');
+  assert.equal(next.lastMove, null);
+  assert.deepEqual(next.region, computeRegion([]));
+  assert.equal(next.cells.size, 0);
+  assert.equal(applyUndo(next, 'B'), null);
 });
 
 console.log('AI');
@@ -585,6 +767,53 @@ check('∞: AI tu danh nhau moi nuoc deu hop le va vung chi mo rong', () => {
   assert.ok(finished || state.moves.length === 30, 'van phai ket thuc hoac du 30 nuoc');
   if (finished) assert.equal(infiniteResult(state).finished, true);
   assert.equal(seen.size, state.moves.length);
+});
+
+check('AI Kho 3x3 van khong thua sau nhieu lan di lai (mo phong)', () => {
+  let undoCount = 0;
+  for (const human of ['A', 'B']) {
+    const ai = otherPlayer(human);
+    for (let game = 0; game < 6; game += 1) {
+      let board = createBoard(3);
+      let moves = [];
+      let turn = human;
+
+      for (let step = 0; step < 9; step += 1) {
+        if (getResult(board, 3, 3).finished) break;
+        if (turn === human) {
+          const empty = getEmptyCells(board);
+          if (!empty.length) break;
+          const index = empty[(game * 5 + step * 3 + 1) % empty.length];
+          board[index] = human;
+          moves.push({ i: index, s: human });
+          turn = ai;
+        } else {
+          const index = chooseMove(board, ai, human, 'hard', Math.random);
+          assert.ok(index >= 0 && board[index] === null, 'AI phai chon o trong');
+          board[index] = ai;
+          moves.push({ i: index, s: ai });
+          turn = human;
+        }
+
+        if (step === 1 || step === 3) {
+          const next = applyUndo(
+            { size: 3, board: board.slice(), moves: moves.map((move) => ({ ...move })) },
+            human
+          );
+          assert.ok(next, 'phai di lai duoc');
+          assert.ok(next.moves.length < moves.length, 'phai bo it nhat mot nuoc');
+          moves = next.moves;
+          board = next.board;
+          turn = human;
+          undoCount += 1;
+        }
+      }
+
+      const result = getResult(board, 3, 3);
+      assert.notEqual(result.winner, human, `AI ${ai} thua o van ${game}`);
+    }
+  }
+  assert.ok(undoCount >= 12, `chi di lai ${undoCount} lan`);
 });
 
 console.log(`\n${passed} tests passed`);

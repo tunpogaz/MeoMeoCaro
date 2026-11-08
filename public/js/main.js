@@ -45,6 +45,8 @@ import {
   clearEmoteBubble,
   showSleepZ,
   updateTimer,
+  animateRemovedCats,
+  hideToast,
 } from './ui.js';
 import {
   initInfiniteBoard,
@@ -58,6 +60,7 @@ import {
   refreshInfiniteText,
 } from './infinite-board.js';
 import {
+  applyUndo,
   BOARD_CONFIGS,
   INFINITE,
   INFINITE_SIZE,
@@ -75,6 +78,7 @@ import {
   place,
   placeInfinite,
   otherPlayer,
+  undoTargetCount,
   winLengthFor,
 } from './game-core.js';
 import { createAIClient } from './ai-client.js';
@@ -153,6 +157,14 @@ const ERROR_KEY_BY_CODE = {
   VERIFY_TOKEN_INVALID: 'verifyTokenInvalid',
   MAIL_DISABLED: 'mailDisabled',
   MAIL_SEND_FAILED: 'mailSendFailed',
+  UNDO_NOT_AVAILABLE: 'undoUnavailable',
+  UNDO_NO_MOVES: 'undoNoMoves',
+  UNDO_PENDING: 'undoPending',
+  UNDO_LIMIT_REACHED: 'undoLimit',
+  UNDO_COOLDOWN: 'undoCooldown',
+  UNDO_ALREADY_DECLINED_HERE: 'undoAlreadyDeclined',
+  OPPONENT_OFFLINE: 'undoOpponentOffline',
+  STALE_STATE: 'undoStale',
   SERVER_ERROR: 'serverError',
 };
 
@@ -199,6 +211,14 @@ const state = {
     rematchPending: false,
     rematchToastShown: false,
     rejoining: false,
+    undo: null,
+    undoLeft: null,
+    undoCooldownUntil: 0,
+    undoDeclinedAtCount: null,
+    undoGhosts: null,
+    undoTick: null,
+    undoCooldownTimer: null,
+    undoDeclineTimer: null,
   },
 };
 
@@ -2073,6 +2093,7 @@ function actionsForLocal() {
 
 function enterGameScreen(mode, size) {
   cancelAiTimer();
+  hideUndoUi();
   const infinite = isInfiniteSize(size);
   setMode(mode);
   if (infinite) {
@@ -2127,6 +2148,146 @@ function exitLocalGame() {
   hideResult();
   hideRecord();
   setStatus('', '');
+  hideUndoUi();
+}
+
+function undoLocalReason() {
+  const game = state.game;
+  if (!game) return 'undoUnavailable';
+  if (game.finished) return 'undoFinished';
+  if (state.ai.thinking) return 'undoThinking';
+  if (game.turn !== 'A') return 'undoWaitTurn';
+  if (undoTargetCount(game.moves || [], 'A') === null) return 'undoNoMoves';
+  return '';
+}
+
+function updateUndoButton() {
+  const button = $('btn-undo');
+  if (!button) return;
+  const tools = $('game-tools');
+  const aiMode = state.mode === 'ai';
+  const onlineMode = state.mode === 'online';
+
+  if (!(aiMode || onlineMode)) {
+    button.hidden = true;
+    if (tools) tools.hidden = true;
+    return;
+  }
+
+  let reason = '';
+  if (aiMode) reason = undoLocalReason();
+  else reason = onlineUndoReason();
+
+  if (onlineMode && reason === 'undoCooldown') scheduleUndoCooldownRefresh();
+
+  button.hidden = false;
+  if (tools) tools.hidden = false;
+  $('undo-label').textContent = t(aiMode ? 'undoAction' : 'undoRequest');
+  button.disabled = Boolean(reason);
+  button.title = reason ? t(reason) : '';
+  button.setAttribute('aria-describedby', 'undo-hint');
+  const hint = $('undo-hint');
+  if (hint) hint.textContent = reason ? t(reason) : '';
+
+  const count = $('undo-count');
+  if (count) {
+    const left = onlineMode ? Number(state.online.undoLeft) : Number.NaN;
+    if (onlineMode && Number.isFinite(left)) {
+      count.hidden = false;
+      count.textContent = String(left);
+      count.title = t('undoLeft', { n: left });
+    } else {
+      count.hidden = true;
+      count.textContent = '';
+      count.title = '';
+    }
+  }
+}
+
+function hideUndoUi() {
+  const button = $('btn-undo');
+  if (button) {
+    button.hidden = true;
+    button.disabled = false;
+    button.title = '';
+  }
+  const tools = $('game-tools');
+  if (tools) tools.hidden = true;
+  const banner = $('undo-banner');
+  if (banner) banner.hidden = true;
+  const decline = $('undo-decline');
+  if (decline) decline.hidden = true;
+  const hint = $('undo-hint');
+  if (hint) hint.textContent = '';
+  state.online.undoLeft = null;
+  hideUndoDialog();
+  clearUndoDecline();
+  stopUndoTick();
+}
+
+/** Tra ve ly do khong xin duoc (chuoi i18n) hoac '' neu co the xin. */
+function onlineUndoReason() {
+  const room = state.online.roomState;
+  if (!room || room.status !== 'playing') return 'undoFinished';
+  if (state.online.undo) return 'undoPending';
+  if (state.online.undoLeft === 0) return 'undoLimit';
+  if (state.online.undoCooldownUntil && state.online.undoCooldownUntil > Date.now()) {
+    return 'undoCooldown';
+  }
+  if (state.online.undoDeclinedAtCount === room.moveCount) return 'undoAlreadyDeclined';
+  if (!state.online.youSymbol) return 'undoUnavailable';
+  if ((room.moveCount || 0) < 1) return 'undoNoMoves';
+  const moves = Array.isArray(room.moves) ? room.moves : null;
+  if (moves && undoTargetCount(moves, state.online.youSymbol) === null) return 'undoNoMoves';
+  return '';
+}
+
+function undoLocalMove() {
+  const game = state.game;
+  if (!game || state.mode !== 'ai') return;
+  const reason = undoLocalReason();
+  if (reason) {
+    toast(t(reason), 'error', 1800);
+    audio.play('error');
+    updateUndoButton();
+    return;
+  }
+
+  const keep = undoTargetCount(game.moves || [], 'A');
+  if (keep === null) return;
+  const removed = game.moves.slice(keep);
+  const next = applyUndo(game, 'A');
+  if (!next) {
+    toast(t('undoUnavailable'), 'error', 1800);
+    return;
+  }
+
+  cancelAiTimer();
+  if (isInfiniteSize(next.size)) {
+    next.undoGhosts = removed
+      .filter((move) => move && Number.isInteger(move.x) && Number.isInteger(move.y))
+      .map((move) => ({ x: move.x, y: move.y, s: move.s }));
+  } else {
+    animateRemovedCats(
+      removed
+        .filter((move) => move && Number.isInteger(move.i))
+        .map((move) => ({ index: move.i, symbol: move.s }))
+    );
+  }
+
+  state.game = next;
+  state.ai.thinking = false;
+  renderLocalGame();
+  audio.play('undo');
+  toast(t('undoDone'), 'info', 1800);
+}
+
+function handleUndoClick() {
+  if (state.mode === 'ai') {
+    undoLocalMove();
+    return;
+  }
+  if (state.mode === 'online') requestOnlineUndo();
 }
 
 function startAIGame() {
@@ -2144,7 +2305,7 @@ function startAIGame() {
         : 'B';
 
   state.game = {
-    ...(infinite ? createInfiniteState() : { board: createBoard(size) }),
+    ...(infinite ? createInfiniteState() : { board: createBoard(size), moves: [] }),
     size,
     winLength: winLengthFor(size),
     turn: first,
@@ -2172,7 +2333,7 @@ function startLocalGame(starter = 'A', size = state.settings.boardSize) {
   const infinite = isInfiniteSize(safeSize);
   const first = starter === 'B' ? 'B' : 'A';
   state.game = {
-    ...(infinite ? createInfiniteState() : { board: createBoard(safeSize) }),
+    ...(infinite ? createInfiniteState() : { board: createBoard(safeSize), moves: [] }),
     size: safeSize,
     winLength: winLengthFor(safeSize),
     turn: first,
@@ -2215,6 +2376,7 @@ function renderLocalGame() {
   setCardsForLocal();
   updateRecordLocal();
   updateModeLabel();
+  updateUndoButton();
 
   if (game.finished && game.winLine) showWinLine(game.winLine);
   else clearWinLine();
@@ -2244,6 +2406,7 @@ function renderInfiniteLocalGame() {
     game.finished || (aiMode && (state.ai.thinking || game.turn !== 'A'));
   const preview = locked ? null : aiMode ? 'A' : game.turn;
 
+  const undoGhosts = Array.isArray(game.undoGhosts) ? game.undoGhosts : null;
   setInfiniteVisible(true);
   renderInfinite({
     cells: game.cells,
@@ -2255,13 +2418,16 @@ function renderInfiniteLocalGame() {
     preview,
     maxMoves: INFINITE.maxMoves,
     drawLimit: game.limit,
+    undoGhosts,
     expressionFor: (symbol) => expressionForFinished(game, symbol),
   });
+  if (undoGhosts) delete game.undoGhosts;
   refreshInfiniteText();
   $('game-rule').textContent = t('infRuleFull');
   setCardsForLocal();
   updateRecordLocal();
   updateModeLabel();
+  updateUndoButton();
 
   if (game.finished) {
     setStatus('', '');
@@ -2351,6 +2517,7 @@ function playLocalMove(symbol, index, y) {
   }
 
   if (!place(game.board, index, symbol, game.size)) return false;
+  game.moves.push({ i: index, s: symbol });
   game.lastMove = index;
 
   audio.play('meow');
@@ -2638,6 +2805,7 @@ function handleJoinSuccess(response) {
   state.online.lastEmoteAt = 0;
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
+  resetOnlineUndoState();
 
   saveSession(response.roomId, response.playerKey);
   writeFlag(REPLACED_FLAG, null);
@@ -2652,8 +2820,26 @@ function handleJoinSuccess(response) {
 function applyOnlineState(next, options = {}) {
   if (!next || next.id !== state.online.roomId) return;
   const previous = state.online.roomState;
+  const removed = collectUndoGhosts(previous, next);
+  if (previous?.status === 'finished' && next.status === 'playing') {
+    resetOnlineRoundState();
+  }
   state.online.roomState = next;
   state.online.pendingMove = null;
+
+  mergeUndoFromState(next);
+  state.online.undoLeft = Number.isFinite(Number(next.undoLeft))
+    ? Number(next.undoLeft)
+    : state.online.undoLeft;
+  state.online.undoCooldownUntil = Number(next.undoCooldownUntil) || 0;
+  state.online.undoDeclinedAtCount = next.undoDeclinedHere
+    ? Number(next.moveCount) || 0
+    : null;
+  if (next.status !== 'playing') {
+    state.online.undo = null;
+    stopUndoTick();
+  }
+  if (removed.infinite.length) state.online.undoGhosts = removed.infinite;
 
   const you = next.players?.find((player) => player.isYou);
   if (you) state.online.youSymbol = you.symbol;
@@ -2661,15 +2847,15 @@ function applyOnlineState(next, options = {}) {
   if (next.status === 'waiting') {
     showWaitingRoom(next, options);
   } else {
-    if (previous?.status === 'finished' && next.status === 'playing') {
-      resetOnlineRoundState();
-    }
     if (state.screen !== 'game' || state.mode !== 'online') {
       enterOnlineGameScreen();
     }
     updateOnlineTimer(next);
     syncOnlineView();
+    syncUndoPendingUi();
   }
+
+  if (removed.finite.length) animateRemovedCats(removed.finite);
 
   const filled = isInfiniteSize(next.size)
     ? Number(next.moveCount ?? next.moves?.length ?? 0)
@@ -2771,7 +2957,10 @@ function syncOnlineView() {
   setPlayerCard('right', cardFor('B'));
 
   const locked =
-    !playing || next.turn !== youSymbol || state.online.pendingMove !== null;
+    !playing ||
+    next.turn !== youSymbol ||
+    state.online.pendingMove !== null ||
+    Boolean(state.online.undo);
   const infinite = isInfiniteSize(next.size);
   const size = isValidBoardSize(next.size) ? next.size : 3;
   if (infinite) {
@@ -2781,8 +2970,9 @@ function syncOnlineView() {
       lastMove: next.lastMove,
       winLine: next.winLine,
       locked,
-      preview: playing && next.turn === youSymbol ? youSymbol : null,
+      preview: playing && next.turn === youSymbol && !state.online.undo ? youSymbol : null,
       maxMoves: next.maxMoves,
+      undoGhosts: Array.isArray(state.online.undoGhosts) ? state.online.undoGhosts : [],
       drawLimit: state.online.finishReason === 'maxMoves' || isInfiniteLimitDraw(next),
       expressionFor: (symbol) => {
         if (!finished) return 'normal';
@@ -2790,12 +2980,13 @@ function syncOnlineView() {
         return symbol === winner ? 'win' : 'lose';
       },
     });
+    state.online.undoGhosts = null;
     refreshInfiniteText();
     $('game-rule').textContent = t('infRuleFull');
   } else {
     renderBoard(next.board, {
       locked,
-      preview: playing && next.turn === youSymbol ? youSymbol : null,
+      preview: playing && next.turn === youSymbol && !state.online.undo ? youSymbol : null,
       expressionFor: (symbol) => {
         if (!finished) return 'normal';
         if (draw) return 'sleep';
@@ -2833,6 +3024,8 @@ function syncOnlineView() {
     else if (next.turn === youSymbol) setStatus(t('yourTurn'), '');
     else setStatus(t('waitOpponent', { name: displayName(next.turn) }), '');
   }
+
+  updateUndoButton();
 }
 
 function isInfiniteLimitDraw(roomState) {
@@ -2904,6 +3097,11 @@ function voteRematch() {
 function onOnlineCell(index) {
   const next = state.online.roomState;
   if (!next || next.status !== 'playing') return;
+  if (state.online.undo) {
+    toast(t('undoMoveBlocked'), 'info', 1600);
+    audio.play('error');
+    return;
+  }
   if (state.online.pendingMove !== null) return;
 
   if (next.turn !== state.online.youSymbol) {
@@ -2948,6 +3146,11 @@ function onOnlineInfiniteCell(x, y) {
   const next = state.online.roomState;
   if (!next || next.status !== 'playing') return;
   if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+  if (state.online.undo) {
+    toast(t('undoMoveBlocked'), 'info', 1600);
+    audio.play('error');
+    return;
+  }
   if (state.online.pendingMove !== null) return;
 
   if (next.turn !== state.online.youSymbol) {
@@ -2993,12 +3196,388 @@ function onOnlineInfiniteCell(x, y) {
     });
 }
 
+const UNDO_TIMEOUT_FALLBACK_MS = 15000;
+
+function undoPendingTotalMs(undo) {
+  const total = Number(undo?.totalMs);
+  if (Number.isFinite(total) && total > 0) return total;
+  return UNDO_TIMEOUT_FALLBACK_MS;
+}
+
+function undoRemainingMs() {
+  const undo = state.online.undo;
+  if (!undo) return 0;
+  return Math.max(0, Number(undo.expiresAt || 0) - Date.now());
+}
+
+function onlineOpponentName() {
+  const next = state.online.roomState;
+  const opponent = next?.players?.find((player) => !player.isYou);
+  if (opponent?.name) return opponent.name;
+  return state.online.youSymbol === 'A' ? t('grayCat') : t('orangeCat');
+}
+
+function stopUndoTick() {
+  if (state.online.undoTick !== null) {
+    window.clearInterval(state.online.undoTick);
+    state.online.undoTick = null;
+  }
+}
+
+function scheduleUndoCooldownRefresh() {
+  if (state.online.undoCooldownTimer !== null) {
+    window.clearTimeout(state.online.undoCooldownTimer);
+    state.online.undoCooldownTimer = null;
+  }
+  const left = Number(state.online.undoCooldownUntil) - Date.now();
+  if (!(left > 0)) return;
+  state.online.undoCooldownTimer = window.setTimeout(() => {
+    state.online.undoCooldownTimer = null;
+    if (state.mode === 'online') updateUndoButton();
+  }, left + 80);
+}
+
+function paintUndoTimer() {
+  const fill = $('undo-dialog-fill');
+  if (!fill) return;
+  const undo = state.online.undo;
+  if (!undo) {
+    fill.style.transform = 'scaleX(0)';
+    return;
+  }
+  const total = undoPendingTotalMs(undo);
+  const ratio = total > 0 ? Math.min(1, Math.max(0, undoRemainingMs() / total)) : 0;
+  fill.style.transform = `scaleX(${ratio})`;
+}
+
+function updateUndoBanner() {
+  const undo = state.online.undo;
+  const text = $('undo-banner-text');
+  if (!undo || !text) return;
+  const seconds = Math.max(0, Math.ceil(undoRemainingMs() / 1000));
+  text.textContent = `${t('undoWaiting', { name: onlineOpponentName() })} ${seconds}s`;
+}
+
+function startUndoTick() {
+  stopUndoTick();
+  paintUndoTimer();
+  updateUndoBanner();
+  state.online.undoTick = window.setInterval(() => {
+    if (!state.online.undo) {
+      stopUndoTick();
+      return;
+    }
+    paintUndoTimer();
+    updateUndoBanner();
+    if (undoRemainingMs() <= 0) {
+      stopUndoTick();
+      updateUndoButton();
+    }
+  }, 100);
+}
+
+function showUndoDialog(pending) {
+  const dialog = $('dialog-undo');
+  if (!dialog) return;
+  const cat = $('undo-dialog-cat');
+  if (cat) cat.innerHTML = catFace(pending.fromAvatar || 'orange', 'think');
+  const body = $('undo-dialog-body');
+  if (body) body.textContent = t('undoRequestBody', { name: pending.fromName || '' });
+  paintUndoTimer();
+  if (!dialog.open) openDialog('dialog-undo');
+  const decline = $('undo-decline-btn');
+  if (decline) decline.focus({ preventScroll: true });
+  startUndoTick();
+}
+
+function hideUndoDialog() {
+  const dialog = $('dialog-undo');
+  if (dialog && dialog.open) dialog.close();
+}
+
+function setUndoDialogBusy(busy) {
+  const accept = $('undo-accept');
+  const decline = $('undo-decline-btn');
+  if (accept) accept.disabled = busy === true;
+  if (decline) decline.disabled = busy === true;
+}
+
+function clearUndoDecline() {
+  if (state.online.undoDeclineTimer !== null) {
+    window.clearTimeout(state.online.undoDeclineTimer);
+    state.online.undoDeclineTimer = null;
+  }
+  const bubble = $('undo-decline');
+  if (bubble) bubble.hidden = true;
+}
+
+function hideUndoDecline() {
+  clearUndoDecline();
+}
+
+function showUndoDecline(avatar) {
+  const bubble = $('undo-decline');
+  if (!bubble) return;
+  clearUndoDecline();
+  hideToast();
+  const cat = $('undo-decline-cat');
+  if (cat) cat.innerHTML = catFace(avatar || 'orange', 'tongue');
+  const text = $('undo-decline-text');
+  if (text) text.textContent = t('undoDeclined');
+  bubble.hidden = false;
+  state.online.undoDeclineTimer = window.setTimeout(() => {
+    state.online.undoDeclineTimer = null;
+    bubble.hidden = true;
+  }, 4000);
+}
+
+/** Dong bo hop thoai / banner theo trang thai undo dang cho. */
+function syncUndoPendingUi() {
+  const undo = state.online.undo;
+  const banner = $('undo-banner');
+  if (!undo) {
+    if (banner) banner.hidden = true;
+    hideUndoDialog();
+    stopUndoTick();
+    updateUndoButton();
+    return;
+  }
+  if (undo.byYou) {
+    if (banner) banner.hidden = false;
+    updateUndoBanner();
+    hideUndoDialog();
+    stopUndoTick();
+  } else {
+    if (banner) banner.hidden = true;
+    showUndoDialog(undo);
+  }
+  updateUndoButton();
+}
+
+function mergeUndoFromState(next) {
+  const previous = state.online.undo;
+  const incoming = next?.undo || null;
+  if (!incoming) {
+    state.online.undo = null;
+    return;
+  }
+  const same =
+    previous &&
+    previous.fromSymbol === incoming.fromSymbol &&
+    previous.moveCount === incoming.moveCount &&
+    Number(previous.expiresAt) === Number(incoming.expiresAt);
+  const fallbackTotal = Math.max(1000, Number(incoming.expiresIn) || 0);
+  state.online.undo = {
+    ...incoming,
+    byYou: incoming.byYou === true,
+    receivedAt: same ? previous.receivedAt : Date.now(),
+    totalMs: same
+      ? previous.totalMs
+      : fallbackTotal || UNDO_TIMEOUT_FALLBACK_MS,
+  };
+}
+
+/** Tinh cac quan vua bi go de chay hieu ung bien mat (khong giu lai giua 2 van). */
+function collectUndoGhosts(previous, next) {
+  const empty = { finite: [], infinite: [] };
+  if (!previous || !next) return empty;
+  if (previous.status !== 'playing' || next.status !== 'playing') return empty;
+  if (previous.size !== next.size) return empty;
+  const previousCount = Number(previous.moveCount ?? 0);
+  const nextCount = Number(next.moveCount ?? 0);
+  if (!(nextCount < previousCount)) return empty;
+
+  if (isInfiniteSize(next.size)) {
+    const nextKeys = new Set(
+      (Array.isArray(next.moves) ? next.moves : []).map((move) => `${move.x},${move.y}`)
+    );
+    const infinite = (Array.isArray(previous.moves) ? previous.moves : [])
+      .filter((move) => move && !nextKeys.has(`${move.x},${move.y}`))
+      .map((move) => ({ x: move.x, y: move.y, s: move.s }));
+    return { finite: [], infinite };
+  }
+
+  const previousBoard = Array.isArray(previous.board) ? previous.board : [];
+  const nextBoard = Array.isArray(next.board) ? next.board : [];
+  const finite = [];
+  for (let i = 0; i < previousBoard.length; i += 1) {
+    if (previousBoard[i] && !nextBoard[i]) {
+      finite.push({ index: i, symbol: previousBoard[i] });
+    }
+  }
+  return { finite, infinite: [] };
+}
+
+function requestOnlineUndo() {
+  const room = state.online.roomState;
+  const reason = onlineUndoReason();
+  if (reason) {
+    toast(t(reason), 'error', 1800);
+    audio.play('error');
+    updateUndoButton();
+    return;
+  }
+  if (!room || !state.online.roomId) return;
+  const moveCount = Number(room.moveCount || 0);
+
+  net
+    .requestUndo(state.online.roomId, moveCount)
+    .then((response) => {
+      if (!response?.ok) {
+        showServerError(response?.code, response?.error);
+        updateUndoButton();
+        return;
+      }
+      if (Number.isFinite(Number(response.undoLeft))) {
+        state.online.undoLeft = Number(response.undoLeft);
+      }
+      // Thuong thi undo:requested da den truoc ack; chi tao du phong neu chua co.
+      if (!state.online.undo) {
+        state.online.undo = {
+          fromSymbol: state.online.youSymbol,
+          fromName: currentProfile().name,
+          fromAvatar: currentProfile().avatar,
+          moveCount,
+          expiresAt: Number(response.expiresAt) || Date.now() + UNDO_TIMEOUT_FALLBACK_MS,
+          receivedAt: Date.now(),
+          totalMs: UNDO_TIMEOUT_FALLBACK_MS,
+          byYou: true,
+        };
+      }
+      syncUndoPendingUi();
+    })
+    .catch(() => {
+      toast(t('genericError'), 'error');
+      updateUndoButton();
+    });
+}
+
+function respondOnlineUndo(accept) {
+  const pending = state.online.undo;
+  if (!pending || pending.byYou) return;
+  const roomId = state.online.roomId;
+  if (!roomId) return;
+  setUndoDialogBusy(true);
+  net
+    .respondUndo(roomId, accept === true)
+    .then((response) => {
+      if (!response?.ok && !response?.ignored) {
+        showServerError(response?.code, response?.error);
+      }
+    })
+    .catch(() => {
+      toast(t('genericError'), 'error');
+    })
+    .finally(() => {
+      setUndoDialogBusy(false);
+    });
+}
+
+function cancelOnlineUndo() {
+  const pending = state.online.undo;
+  if (!pending || !pending.byYou) return;
+  const roomId = state.online.roomId;
+  if (!roomId) return;
+  const button = $('btn-undo-cancel');
+  if (button) button.disabled = true;
+  net
+    .cancelUndo(roomId)
+    .then((response) => {
+      if (!response?.ok && !response?.ignored) {
+        showServerError(response?.code, response?.error);
+      }
+    })
+    .catch(() => {
+      toast(t('genericError'), 'error');
+    })
+    .finally(() => {
+      if (button) button.disabled = false;
+    });
+}
+
+function resetOnlineUndoState() {
+  state.online.undo = null;
+  state.online.undoLeft = null;
+  state.online.undoCooldownUntil = 0;
+  state.online.undoDeclinedAtCount = null;
+  state.online.undoGhosts = null;
+  stopUndoTick();
+  if (state.online.undoCooldownTimer !== null) {
+    window.clearTimeout(state.online.undoCooldownTimer);
+    state.online.undoCooldownTimer = null;
+  }
+  hideUndoDialog();
+  setUndoDialogBusy(false);
+  clearUndoDecline();
+  const banner = $('undo-banner');
+  if (banner) banner.hidden = true;
+}
+
+function handleUndoRequested(payload) {
+  if (!payload || state.mode !== 'online') return;
+  const youSymbol = state.online.youSymbol;
+  const byYou = Boolean(youSymbol) && payload.fromSymbol === youSymbol;
+  const expiresAt = Number(payload.expiresAt) || Date.now() + UNDO_TIMEOUT_FALLBACK_MS;
+  const now = Date.now();
+  state.online.undo = {
+    fromSymbol: payload.fromSymbol,
+    fromName: payload.fromName || '',
+    fromAvatar: payload.fromAvatar || 'orange',
+    moveCount: Number(payload.moveCount) || 0,
+    expiresAt,
+    receivedAt: now,
+    totalMs: Math.max(1000, expiresAt - now),
+    byYou,
+  };
+  hideUndoDecline();
+  syncUndoPendingUi();
+  if (byYou) toast(t('undoRequestSent'), 'info', 1600);
+}
+
+function handleUndoResolved(payload) {
+  const pending = state.online.undo;
+  const result = payload?.result;
+  const byYou = pending?.byYou === true;
+  const opponent = state.online.roomState?.players?.find((player) => !player.isYou);
+
+  state.online.undo = null;
+  stopUndoTick();
+  hideUndoDialog();
+  clearUndoDecline();
+
+  switch (result) {
+    case 'accepted':
+      audio.play('undo');
+      toast(t('undoDone'), 'success', 1800);
+      break;
+    case 'declined':
+      if (byYou) {
+        showUndoDecline(opponent?.avatar || 'orange');
+        audio.play('lose');
+      }
+      break;
+    case 'timeout':
+      if (byYou) toast(t('undoTimeout'), 'info', 2400);
+      break;
+    case 'cancelled':
+      if (byYou) toast(t('undoCancelled'), 'info', 1800);
+      else toast(t('undoOpponentCancelled'), 'info', 2200);
+      break;
+    default:
+      break;
+  }
+
+  syncUndoPendingUi();
+  updateUndoButton();
+}
+
 function resetOnlineRoundState() {
   state.online.finishReason = null;
   state.online.celebratedKey = null;
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
   state.online.pendingMove = null;
+  resetOnlineUndoState();
   if (isInfiniteSize(state.online.roomState?.size)) resetInfiniteView();
   hideResult();
   clearWinLine();
@@ -3009,6 +3588,12 @@ function handleOnlineEvent(event, payload) {
   switch (event) {
     case 'room:state':
       applyOnlineState(payload);
+      break;
+    case 'undo:requested':
+      handleUndoRequested(payload);
+      break;
+    case 'undo:resolved':
+      handleUndoResolved(payload);
       break;
     case 'game:over':
       handleGameOver(payload);
@@ -3161,6 +3746,7 @@ function handleOnlineDisconnect() {
   updateTimer(null);
   setBanner(t('connLost'), 'error');
   state.online.pendingMove = null;
+  resetOnlineUndoState();
 }
 
 function handleOnlineConnectError() {
@@ -3205,6 +3791,7 @@ function endOnlineSession({ clearSaved = true } = {}) {
   state.online.lastBoardCount = null;
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
+  resetOnlineUndoState();
   stopOnlineTimer();
   stopInfiniteSession();
   setInfiniteVisible(false);
@@ -3301,7 +3888,8 @@ function updateOnlineTimer(next) {
     $('turn-timer').hidden = false;
     if (next.turnEndsIn === null || next.turnEndsIn === undefined) {
       stopOnlineTimer();
-      updateTimer(null);
+      // Khi dang cho tra loi di lai, dong ho dung yen thay vi xoa trang.
+      if (!state.online.undo) updateTimer(null);
     } else {
       startOnlineTimer(next.turnEndsIn, next.turnMs);
     }
@@ -3340,6 +3928,7 @@ async function tryResumeSession() {
     state.online.finishReason = null;
     state.online.celebratedKey = null;
     state.online.lastBoardCount = null;
+    resetOnlineUndoState();
 
     saveSession(state.online.roomId, session.playerKey);
     setLoading(false);
@@ -3828,6 +4417,23 @@ function setupGameEvents() {
   });
 
   $('game-sound').addEventListener('click', toggleSound);
+  $('btn-undo').addEventListener('click', handleUndoClick);
+  $('btn-undo-cancel').addEventListener('click', cancelOnlineUndo);
+  $('undo-accept').addEventListener('click', () => respondOnlineUndo(true));
+  $('undo-decline-btn').addEventListener('click', () => respondOnlineUndo(false));
+  $('undo-decline').addEventListener('click', hideUndoDecline);
+
+  const undoDialog = $('dialog-undo');
+  if (undoDialog) {
+    undoDialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      respondOnlineUndo(false);
+    });
+    undoDialog.addEventListener('keydown', (event) => {
+      // Enter khong duoc dong y; chi dong y khi bam nut.
+      if (event.key === 'Enter') event.preventDefault();
+    });
+  }
 
   document.querySelectorAll('.emote-btn').forEach((button) => {
     button.addEventListener('click', () => sendEmote(button.dataset.emote));
@@ -3843,6 +4449,7 @@ function setupDialogs() {
   });
 
   document.querySelectorAll('dialog.modal').forEach((dialog) => {
+    if (dialog.id === 'dialog-undo') return;
     dialog.addEventListener('click', (event) => {
       if (event.target === dialog) dialog.close();
     });

@@ -1916,6 +1916,10 @@ dialog.modal::backdrop {
   transform: translate(-50%, 0);
 }
 
+.toast.instant {
+  transition: none;
+}
+
 .toast.error {
   background: #c23b32;
   color: #fff;
@@ -2982,4 +2986,177 @@ body.reduce-motion .zzz {
 
 #reset-loading {
   text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+   Di lai (undo)
+   --------------------------------------------------------------------------- */
+.game-tools {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 10px auto 0;
+  width: 100%;
+}
+
+.undo-btn {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.undo-btn .undo-icon {
+  font-size: 1.28em;
+  line-height: 1;
+  transform-origin: 50% 60%;
+}
+
+.undo-btn:not(:disabled):active .undo-icon {
+  transform: rotate(-40deg);
+}
+
+.undo-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(74, 52, 38, 0.12);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.undo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px auto 0;
+  padding: 10px 14px;
+  max-width: min(94vw, 640px);
+  border-radius: 16px;
+  background: #fff3d8;
+  border: 2px dashed rgba(180, 120, 20, 0.35);
+  color: #6d4510;
+  font-weight: 700;
+}
+
+.undo-decline {
+  position: fixed;
+  z-index: 130;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(92vw, 430px);
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: #fff7ec;
+  border: 3px solid var(--ink, #4a3426);
+  box-shadow: 0 10px 30px rgba(74, 52, 38, 0.25);
+  animation: undoBubbleIn 0.24s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+.undo-decline[hidden] {
+  display: none;
+}
+
+.undo-decline-cat {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  display: block;
+}
+
+.undo-decline-cat .cat-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.undo-decline p {
+  margin: 0;
+  font-weight: 800;
+  color: #8a3b2a;
+  line-height: 1.25;
+}
+
+.undo-dialog-cat {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 6px;
+}
+
+.undo-dialog-cat .cat-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.undo-dialog-body {
+  text-align: center;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.undo-timer {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(74, 52, 38, 0.14);
+  overflow: hidden;
+  margin: 0 auto 16px;
+  width: 100%;
+}
+
+.undo-timer-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffb347, #ff6b6b);
+  transform-origin: left center;
+  transition: transform 0.12s linear;
+}
+
+.undo-ghost {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  animation: undoGhostOut 0.22s ease-out forwards;
+}
+
+.undo-ghost .cat-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes undoGhostOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.55) translateY(-16px) rotate(-12deg);
+  }
+}
+
+@keyframes undoBubbleIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }

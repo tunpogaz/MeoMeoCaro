@@ -73,6 +73,7 @@ let outsideFlashAt = 0;
 let regionAnim = null;
 let winAnim = 0;
 let placeAnim = null;
+let undoAnim = null;
 let flash = null;
 let panAnim = null;
 
@@ -141,6 +142,7 @@ function isAnimating(time) {
   if (regionAnim && time - regionAnim.start < regionAnim.dur) return true;
   if (winAnim && time - winAnim < 700) return true;
   if (placeAnim && time - placeAnim.start < 320) return true;
+  if (undoAnim && time - undoAnim.start < undoAnim.dur) return true;
   if (flash && time - flash.start < 520) return true;
   if (panAnim && time - panAnim.start < panAnim.dur) return true;
   if (outsideFlashAt && time - outsideFlashAt < 520) return true;
@@ -407,6 +409,7 @@ export function stopInfiniteSession() {
   regionAnim = null;
   winAnim = 0;
   placeAnim = null;
+  undoAnim = null;
   flash = null;
   panAnim = null;
   outsideFlashAt = 0;
@@ -519,6 +522,18 @@ export function renderInfinite(next = {}) {
   const region = normalizeRegion(next.region, moves);
   const lastMove = normalizeLastMove(next.lastMove);
   const winLine = normalizeWinLine(next.winLine);
+  const undoGhosts = Array.isArray(next.undoGhosts)
+    ? next.undoGhosts
+        .filter(
+          (point) =>
+            point &&
+            Number.isInteger(point.x) &&
+            Number.isInteger(point.y) &&
+            (point.s === 'A' || point.s === 'B')
+        )
+        .map((point) => ({ x: point.x, y: point.y, s: point.s }))
+    : [];
+  const undoing = undoGhosts.length > 0;
   const previous = boardState;
   const previousSig = samePoint(previous.lastMove, lastMove) ? '' : lastMove;
 
@@ -555,7 +570,7 @@ export function renderInfinite(next = {}) {
   }
 
   if (lastMove && (!previous.lastMove || !samePoint(previous.lastMove, lastMove))) {
-    placeAnim = { x: lastMove.x, y: lastMove.y, start: now() };
+    placeAnim = undoing ? null : { x: lastMove.x, y: lastMove.y, start: now() };
     if (firstRender) {
       firstRender = false;
       if (!reducedMotion()) {
@@ -572,13 +587,22 @@ export function renderInfinite(next = {}) {
       } else {
         focusCell(lastMove.x, lastMove.y);
       }
-    } else if (autoFollow && !isCellVisible(lastMove.x, lastMove.y, view.cell * 0.4)) {
+    } else if (!undoing && autoFollow && !isCellVisible(lastMove.x, lastMove.y, view.cell * 0.4)) {
       focusCell(lastMove.x, lastMove.y);
     }
     announceMove(lastMove);
   } else if (!lastMove) {
     firstRender = false;
     placeAnim = null;
+  }
+
+  if (undoing) {
+    firstRender = false;
+    undoAnim = {
+      points: undoGhosts,
+      start: now(),
+      dur: reducedMotion() ? 0 : 220,
+    };
   }
 
   const winSignature = winLine
@@ -700,6 +724,7 @@ function draw(time) {
   drawOrigin(ctx, region);
 
   drawPieces(ctx, time, bounds);
+  drawUndoGhosts(ctx, time, bounds);
   drawHover(ctx);
   drawCursor(ctx, time);
   drawLastMove(ctx, time, region);
@@ -955,6 +980,31 @@ function drawPieces(ctx, time, bounds) {
     if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
     if (x < bounds.x0 || x > bounds.x1 || y < bounds.y0 || y > bounds.y1) continue;
     drawPiece(ctx, symbol, x, y, time);
+  }
+}
+
+/** Quan vua bi bo khi di lai: mo dan va thu nho tai cho, khung nhin khong doi. */
+function drawUndoGhosts(ctx, time, bounds) {
+  if (!undoAnim) return;
+  const p = clamp((time - undoAnim.start) / (undoAnim.dur || 1), 0, 1);
+  if (p >= 1) {
+    undoAnim = null;
+    return;
+  }
+  for (const point of undoAnim.points) {
+    if (point.x < bounds.x0 || point.x > bounds.x1) continue;
+    if (point.y < bounds.y0 || point.y > bounds.y1) continue;
+    const rect = cellRect(point.x, point.y);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - p);
+    const scale = 1 - 0.35 * p;
+    const cx = rect.x + rect.size / 2;
+    const cy = rect.y + rect.size / 2 - rect.size * 0.16 * p;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+    drawPiece(ctx, point.s, point.x, point.y, time);
+    ctx.restore();
   }
 }
 

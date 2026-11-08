@@ -153,6 +153,16 @@ function eyesMarkup(theme, expression) {
       <path d="M79 39 q4 7 0 9 q-4 -2 0 -9" fill="#8CE0F3" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>
     `;
   }
+  if (expression === 'tongue') {
+    return `
+      <path d="M30 51 q6 -7 12 0" fill="none" stroke="${INK}" stroke-width="3.6" stroke-linecap="round"/>
+      <ellipse cx="64" cy="53.5" rx="6" ry="7.2" fill="${theme.eye}" stroke="none"/>
+      <circle cx="61.8" cy="50.8" r="2.1" fill="#FFF"/>
+      <circle cx="66.2" cy="56" r=".9" fill="#FFF" opacity=".8"/>
+      <path d="M24 43 l10 3" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" opacity=".7"/>
+      <path d="M76 43 l-10 3" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" opacity=".7"/>
+    `;
+  }
   const pupils = theme.pupil
     ? `
       <ellipse cx="36" cy="53.5" rx="6.4" ry="7.6" fill="${theme.eye}" stroke="none"/>
@@ -192,6 +202,14 @@ function mouthMarkup(theme, expression) {
     return `
       <path d="M46.5 65 L53.5 65 L50 70 Z" fill="${theme.nose}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
       <ellipse cx="50" cy="72.5" rx="3.2" ry="4.2" fill="${theme.nose}" stroke="${INK}" stroke-width="2"/>
+    `;
+  }
+  if (expression === 'tongue') {
+    return `
+      <path d="M46.5 65 L53.5 65 L50 70 Z" fill="${theme.nose}" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M41 69 q9 8 18 0 q-9 3 -18 0 Z" fill="#D95B6D" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>
+      <path d="M45 71 q5 6 10 0 q1 9 -5 10 q-6 -1 -5 -10 Z" fill="#F58FA0" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M50 73.5 l0 5" fill="none" stroke="${INK}" stroke-width="1.4" stroke-linecap="round" opacity=".55"/>
     `;
   }
   return `
@@ -236,7 +254,7 @@ function faceInner(theme, expression) {
 /**
  * Mat meo cho quan co / player card.
  * @param {string} themeKey orange | gray | calico | black | cream | tabby
- * @param {'normal'|'win'|'lose'|'sleep'|'think'} expression
+ * @param {'normal'|'win'|'lose'|'sleep'|'think'|'tongue'} expression
  */
 export function catFace(themeKey, expression = 'normal') {
   const theme = themeOf(themeKey);
