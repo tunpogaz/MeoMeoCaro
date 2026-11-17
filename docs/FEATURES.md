@@ -16,6 +16,7 @@ Tài liệu này dành cho cả người không đọc code: mô tả game đang
 10. [Cơ sở dữ liệu](#10-cơ-sở-dữ-liệu)
 11. [Biến môi trường](#11-biến-môi-trường)
 12. [Giới hạn đã biết](#12-giới-hạn-đã-biết)
+13. [Ma trận tính năng](#13-ma-trận-tính-năng-rà-soát-2026-11-18)
 
 ## 1. Cách chơi và các chế độ
 
@@ -118,7 +119,8 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 
 - **VI/EN:** mọi chuỗi giao diện có hai ngôn ngữ, đổi ngay không tải lại.
 - **Âm thanh, nhạc và hiệu ứng:** xem mục 7.1 bên dưới.
-- **PWA:** service worker cache app shell, chơi offline với máy; không cache API, socket, health.
+- **PWA:** service worker cache 29 mục app shell (cache `v14`), chơi offline với máy; không cache API, socket, health.
+- **Nhắc “đến lượt bạn”:** tiếng + rung Android khi tab hiện, nhấp nháy tiêu đề + huy hiệu khi tab ẩn, Web Push khi app nền/đóng; xem mục 7.2.
 - **Responsive:** kiểm tra 320–360px không tràn ngang.
 - **Trợ năng:** nút có nhãn, bàn cờ dùng nút thật, thông báo `aria-live`, tôn trọng `prefers-reduced-motion`.
 - **Đánh thức server:** khi hosting free ngủ, client thử lại tới ~90 giây và hiện banner thay vì đăng xuất oan.
@@ -177,16 +179,48 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 6. Muốn đọc log kiểm thử: đặt `window.__MMC_TEST__ = true` trước khi tải trang, sau đó đọc `window.__MMC_AUDIO_LOG` (rỗng trước tương tác).
 7. Trên Android Chrome, chơi online hai máy: đối thủ đi xong thì máy bạn rung nhẹ; tắt **Rung khi đến lượt** trong Cài đặt rồi thử lại thì không rung.
 
+### 7.2. Nhắc “đến lượt bạn” và thông báo đẩy
+
+**Bốn lớp, mỗi trạng thái chỉ một lớp:**
+
+| Lớp | Điều kiện | Cách nhắc |
+| --- | --- | --- |
+| 1 | Tab hiện, đúng lượt mình | Tiếng `turn` sẵn có; Android/Chrome rung 35 ms nếu bật |
+| 2 | `document.hidden`, tab vẫn chạy | Tiêu đề nhấp nháy “● Đến lượt bạn” mỗi 1,2 giây; `navigator.setAppBadge(1)` nếu có |
+| 3 | App nền/đóng/khoá máy | Web Push tiêu đề “Đến lượt bạn rồi! 😺”, mở đúng `/?room=CODE` |
+| 4 | iOS Safari 17.4+, người dùng chạm nút thử | Công tắc ẩn `input type="checkbox" switch` có thể rung; chỉ thử nghiệm, không dùng cho push mạng |
+
+- Client báo trạng thái hiển thị bằng `presence:set {roomId, visible}` khi đổi tab, quay lại, mất/hiện focus. Server chỉ gửi push khi người nhận **không hiển thị**, không phải người vừa đi, ván đang chơi, không có undo chờ, còn trong phòng và có `deviceId`.
+- Hạn mức: tối đa 1 push mỗi 20 giây cho cùng phòng + người nhận; TTL 120 giây, `urgency: high`, timeout gửi 5 giây. Payload `{title, body, type, roomId, ts}`, **không có tên người chơi**.
+- Đăng ký lưu `device_id`, `user_id` (nếu đăng nhập), `lang` VI/EN, `created_at`, `last_success_at`, `fail_count`. Tối đa 5 đăng ký/thiết bị và 10/tài khoản, cái cũ nhất bị dọn. Endpoint trùng được cập nhật thay vì nhân bản.
+- Đăng xuất đặt `user_id = NULL` nhưng giữ đăng ký; xoá tài khoản xoá đăng ký của thiết bị trong cùng transaction.
+- Gửi lỗi 404/410 xoá ngay; lỗi khác tăng `fail_count` và xoá sau 5 lần; job mỗi giờ dọn đăng ký không thành công 60 ngày.
+- Service worker xử lý `push`, `notificationclick`, `pushsubscriptionchange`; tab đang mở nhận `postMessage {type:'mmc:open-room', roomId}` thay vì mở tab mới. Meta `{deviceId, lang}` lưu trong Cache Storage để tự đăng ký lại khi trình duyệt đổi subscription.
+
+**Nền tảng:**
+
+| Thiết bị | Tab hiện | Tab ẩn | Nền/đóng | Rung |
+| --- | --- | --- | --- | --- |
+| Android Chrome | Tiếng | Tiêu đề + huy hiệu | Web Push (PWA) | Có, 35 ms |
+| iPhone Safari | Tiếng | Tiêu đề (nếu trình duyệt hiện) | **Không** — cần cài PWA | Không có Vibration API |
+| iPhone PWA iOS 16.4+ | Tiếng | Tiêu đề | Web Push | Hệ điều hành quyết định |
+| iPad (mọi trình duyệt) | Tiếng | Tiêu đề | Web Push trên PWA | **Không có động cơ rung** |
+| Máy tính | Tiếng | Tiêu đề + huy hiệu | Web Push | Không |
+
+**Cấu hình:** `npm run vapid:generate` → đặt `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` trên HTTPS. Thiếu khóa ⇒ `pushEnabled:false`, mục push ẩn, một cảnh báo lúc khởi động. `PUSH_PROVIDER=test` chỉ dùng ngoài production để ghi outbox nội bộ. API: `POST /api/push/subscribe`, `POST /api/push/unsubscribe`, `POST /api/push/test` (3/giờ/thiết bị, 10/giờ/IP). Endpoint phải HTTPS thuộc allowlist `fcm.googleapis.com`, `*.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com`; từ chối IP nội bộ/localhost/userinfo/khóa sai kích thước.
+
+**Kiểm tra:** `npm test` chạy 51 test push/SW/client; browser QA xác nhận bật/tắt, gửi thử, SW hiện đúng banner và tiêu đề nhấp nháy trên Chrome headless. Các mục cần máy thật nằm trong `docs/REGRESSION_CHECKLIST.md` mục 5.
+
 ## 8. Sự kiện Socket.IO
 
 Máy chủ lắng nghe (client → server):
 
 | Sự kiện | Dữ liệu | Mục đích |
 | --- | --- | --- |
-| `room:create` | `{name?, avatar?, size}` | Tạo phòng, trả mã phòng và `playerKey` |
+| `room:create` | `{name?, avatar?, size, deviceId?}` | Tạo phòng, trả mã phòng và `playerKey` |
 | `room:info` | `{roomId}` | Xem thông tin phòng trước khi vào |
-| `room:join` | `{roomId, name?, avatar?}` | Vào phòng |
-| `room:rejoin` | `{roomId, playerKey}` | Vào lại sau F5/mất mạng |
+| `room:join` | `{roomId, name?, avatar?, deviceId?}` | Vào phòng |
+| `room:rejoin` | `{roomId, playerKey, deviceId?}` | Vào lại sau F5/mất mạng |
 | `game:move` | `{roomId, index}` hoặc `{roomId, x, y}` | Đánh một nước |
 | `game:rematch` | `{roomId}` | Bỏ phiếu đấu lại |
 | `emote:send` | `{roomId, emote}` | Gửi emote |
@@ -194,6 +228,7 @@ Máy chủ lắng nghe (client → server):
 | `undo:request` | `{roomId, moveCount}` | Xin đi lại (online) |
 | `undo:respond` | `{roomId, accept}` | Đồng ý/từ chối yêu cầu |
 | `undo:cancel` | `{roomId}` | Người xin tự hủy |
+| `presence:set` | `{roomId, visible}` | Báo tab đang hiện/ẩn; chỉ dùng để quyết định push, không lưu DB |
 
 Máy chủ gửi (server → client):
 
@@ -224,7 +259,7 @@ Tất cả dưới `/api`, JSON, cookie session. Lỗi trả `{ok:false, code, m
 
 | Phương thức | Đường dẫn | Quyền | Mục đích |
 | --- | --- | --- | --- |
-| GET | `/api/config` | công khai | Cho biết email có bật không |
+| GET | `/api/config` | công khai | Cho biết email/push có bật không, trả `vapidPublicKey` khi push bật |
 | POST | `/api/auth/register` | công khai | Đăng ký |
 | POST | `/api/auth/login` | công khai | Đăng nhập |
 | POST | `/api/auth/logout` | công khai | Đăng xuất |
@@ -240,12 +275,15 @@ Tất cả dưới `/api`, JSON, cookie session. Lỗi trả `{ok:false, code, m
 | GET | `/api/history` | đăng nhập | Danh sách ván, lọc + phân trang |
 | GET | `/api/history/:id` | đăng nhập | Chi tiết ván để xem lại |
 | GET | `/api/stats` | đăng nhập | Thống kê theo cỡ bàn |
+| POST | `/api/push/subscribe` | công khai (CSRF) | Lưu/cập nhật đăng ký push của thiết bị |
+| POST | `/api/push/unsubscribe` | công khai (CSRF) | Gỡ đăng ký của thiết bị |
+| POST | `/api/push/test` | công khai (CSRF) | Hẹn gửi thông báo thử; 3/giờ/thiết bị, 10/giờ/IP |
 
 Ngoài `/api`: `GET /health` trả `{status:"ok"}` cho hosting.
 
 ## 10. Cơ sở dữ liệu
 
-Hỗ trợ **PostgreSQL** (khi có `DATABASE_URL`) và **SQLite** (mặc định `data/meo.db`). Migration có version, chạy tự động khi khởi động.
+Hỗ trợ **PostgreSQL** (khi có `DATABASE_URL`) và **SQLite** (mặc định `data/meo.db`). Migration có version, chạy tự động khi khởi động. Hiện có 3 bản: `001_accounts_history`, `002_email_auth`, `003_push_subscriptions`.
 
 Các bảng:
 
@@ -256,8 +294,9 @@ Các bảng:
 - `user_stats`: thắng/thua/hòa theo `(user_id, size_key)`.
 - `email_verifications`: token xác thực email (chỉ hash), hạn, đã dùng.
 - `password_resets`: token đặt lại mật khẩu (chỉ hash), hạn, đã dùng.
+- `push_subscriptions`: đăng ký Web Push của thiết bị — `endpoint` duy nhất, khóa `p256dh`/`auth`, `device_id`, `user_id` (NULL khi khách hoặc đã đăng xuất), `lang` (`vi`/`en`), ngày tạo, lần gửi thành công cuối, số lần lỗi.
 
-Index: username, lịch sử theo từng người + thời gian, session theo user/hạn, token email/mật khẩu theo user/hạn, email đã xác thực duy nhất (partial index).
+Index: username, lịch sử theo từng người + thời gian, session theo user/hạn, token email/mật khẩu theo user/hạn, email đã xác thực duy nhất (partial index), `push_subscriptions` theo `device_id` và `user_id`. Dọn đăng ký push mỗi giờ: xoá khi nhà cung cấp trả 404/410, khi `fail_count > 5`, hoặc không gửi thành công trong 60 ngày. Xoá tài khoản gỡ đăng ký trong cùng transaction; đăng xuất chỉ đặt `user_id` về NULL.
 
 ## 11. Biến môi trường
 
@@ -283,6 +322,12 @@ Sao chép `.env.example` thành `.env`; không commit `.env`.
 | `VERIFY_TOKEN_HOURS` | không | Hạn link xác thực, mặc định 24 giờ |
 | `UNDO_TIMEOUT_MS` | không | Thời gian đối thủ trả lời yêu cầu đi lại, mặc định 15 giây |
 | `UNDO_COOLDOWN_MS` | không | Cooldown sau khi bị từ chối/hết giờ, mặc định 10 giây |
+| `PUSH_PROVIDER` | không | Để trống = gửi thật; `test` = hộp thư giả trong bộ nhớ, từ chối chạy khi `NODE_ENV=production` |
+| `VAPID_PUBLIC_KEY` | khi bật push | Khóa công khai VAPID (base64url); thiếu thì `pushEnabled:false` và ẩn phần thông báo |
+| `VAPID_PRIVATE_KEY` | khi bật push | Khóa riêng VAPID — chỉ đặt trong biến môi trường, không commit |
+| `VAPID_SUBJECT` | không | Liên hệ/URL cho VAPID, mặc định `mailto:no-reply@meomeocaro.local` |
+| `PUSH_GRACE_MS` | không | Chờ ngắn trước khi gửi để gộp trạng thái, mặc định 1500 ms |
+| `PUSH_MIN_INTERVAL_MS` | không | Khoảng cách tối thiểu giữa hai thông báo cùng `(phòng, người nhận)`, mặc định 20 giây |
 
 ## 12. Giới hạn đã biết
 
@@ -296,3 +341,61 @@ Sao chép `.env.example` thành `.env`; không commit `.env`.
 - Đi lại online cần đối thủ trả lời trong 15 giây; tối đa 3 lần/người/ván và có cooldown 10 giây sau lần bị từ chối/hết giờ. F5 đúng lúc đang chờ sẽ hủy yêu cầu (server coi là mất kết nối), không khôi phục hộp thoại sau khi tải lại.
 - Chưa có giải đấu, chat tự do, hay xếp hạng toàn cầu.
 - Âm thanh là bản tổng hợp kiểu chiptune/đồ chơi, không phải nhạc thu; chất lượng phụ thuộc loa/tai nghe. iOS cần một lần chạm để mở khóa Web Audio và công tắc im lặng của iPhone có thể tắt toàn bộ âm thanh.
+- **iPhone Safari (tab thường) không có Vibration API và không nhận Web Push.** Trên iOS 16.4+ chỉ PWA đã “Thêm vào Màn hình chính” mới nhận thông báo đẩy; âm thanh/rung của thông báo do iOS quyết định, công tắc im lặng hoặc chế độ Không làm phiền có thể chặn.
+- **iPad không có động cơ rung.** Mọi lời nhắc trên iPad chỉ là banner/âm thanh; không hứa “iPad sẽ rung”.
+- Thông báo đẩy cần HTTPS (trừ `localhost`); mở bằng `http://` qua mạng LAN sẽ ẩn phần bật thông báo.
+- Rung khi đến lượt trên điện thoại Android chỉ chạy khi tab còn sống và đúng lượt; tab đã bị hệ điều hành treo thì chỉ còn Web Push (nếu đã bật).
+- Gửi thông báo thật phụ thuộc dịch vụ đẩy của trình duyệt (FCM/Mozilla/Apple/WNS); endpoint lạ bị từ chối theo allowlist để chống SSRF.
+
+## 13. Ma trận tính năng (rà soát 2026-11-18)
+
+Bảng dưới là kết quả rà soát tính năng: đọc mã, chạy `npm test` (208/208) và
+Chrome headless (2 browser context online 38/38 + 8/8 bổ sung; QA push 11/11;
+QA mobile + EN 2/2), viewport 320–1024 px. “Test Node” là bằng chứng tự động;
+“browser” là thao tác thật trong Chrome headless. Các mục “chưa kiểm chứng”
+chỉ có thể xác nhận trên thiết bị thật.
+
+| Tính năng | Chế độ / cỡ bàn | Trạng thái | Bằng chứng |
+| --- | --- | --- | --- |
+| Chơi với máy | 3×3, Dễ/Vừa/Khó | Hoạt động | 37 test AI; browser Dễ chạy hết ván |
+| Chơi với máy | ∞, Dễ/Vừa/Khó | Hoạt động | 37 test AI (gồm ∞); browser chạm canvas, số nước tăng |
+| Hai người cùng máy | 3×3 | Hoạt động | Browser chạy hết ván |
+| Hai người cùng máy | ∞ | Hoạt động | Test Node bàn ∞; chưa lặp lại ván ∞ trong browser đợt này |
+| Tạo phòng online | 3×3 | Hoạt động | Browser nhận mã 5 ký tự |
+| Vào phòng bằng mã | 3×3 | Hoạt động | Browser 2 context vào bàn |
+| Vào phòng bằng link mời | 3×3 | Hoạt động | Browser: người đã đăng nhập mở `/?room=CODE`, hộp thoại hiện và vào bàn; khách được đưa tới đăng nhập (đúng tài liệu) |
+| Đấu lại | 3×3 | Hoạt động | Browser: hai bên bỏ phiếu, ván mới bắt đầu |
+| Đi lại với máy | 3×3, ∞ | Hoạt động | 37 test AI (gồm undo); chưa lặp lại thao tác undo AI trong browser đợt này |
+| Đi lại online | 3×3 | Hoạt động | Browser: xin → đối thủ đồng ý → hộp thoại đóng |
+| Emote | Online | Hoạt động | Browser: bong bóng hiện ở đối thủ |
+| F5 / vào lại phòng | Online 3×3 | Hoạt động | Browser: tải lại vẫn ở bàn, đủ 9 ô |
+| Mất kết nối | Online 3×3 | Hoạt động | Browser: chấm kết nối/trạng thái báo đối thủ mất kết nối |
+| Đăng ký / đăng nhập / đăng xuất | Tài khoản | Hoạt động | Browser; 15 test auth |
+| Hồ sơ (tên, avatar) | Tài khoản | Hoạt động | Browser đổi tên thành công |
+| Đổi mật khẩu / đổi email / xác thực email | Tài khoản | Hoạt động (test Node) | 15 auth + 21 password-reset; chưa gửi thư thật |
+| Quên / đặt lại mật khẩu | Tài khoản | Hoạt động (test Node) | 21 test password-reset; chưa gửi thư thật |
+| Xoá tài khoản | Tài khoản | Hoạt động (test Node) | Test auth/history; không thao tác trong browser để tránh xoá dữ liệu |
+| Lịch sử ván | Online | Hoạt động | Browser: ván vừa chơi xuất hiện |
+| Xem lại (replay) | Online | Hoạt động | Browser: thanh replay mở |
+| Thống kê | Online | Hoạt động | Browser: bảng thống kê có dữ liệu |
+| Bảng điểm cục bộ | AI / 2 người | Hoạt động | Test Node + lưu `localStorage` |
+| Âm thanh, nhạc, âm lượng, nghe thử | Mọi màn hình | Hoạt động | 26 test audio; browser mở Cài đặt; chưa nghe bằng loa thật |
+| Rung khi đến lượt | Online, Android Chrome | Hoạt động | 5 test haptics; browser: đúng 1 xung 35 ms ở bên chờ |
+| Rung khi đến lượt | iPhone / iPad | Không hỗ trợ | Nền tảng không có Vibration API; iPad không có động cơ rung |
+| Bật / tắt thông báo đẩy trong Cài đặt | Desktop Chrome (headless) | Hoạt động | 16 test client; browser: xin quyền, tạo đăng ký, tắt trả về trạng thái sẵn sàng, nút gửi thử hiện toast |
+| Banner “đến lượt bạn” từ Service Worker | Desktop Chrome (headless) | Hoạt động | 17 test SW; browser: `deliverPushMessage` hiện đúng tiêu đề, tag `turn-…`, mở `./?room=CODE` |
+| Nháy tiêu đề khi tab ẩn | Desktop | Hoạt động | 16 test client (hẹn giờ giả); browser: tiêu đề “● Đến lượt bạn” rồi khôi phục khi quay lại |
+| Gửi lượt đúng điều kiện (presence, không phải người vừa đi, không undo chờ) | Online | Hoạt động | 18 test push server gồm presence ẩn/hiện, giới hạn 20 giây, chống gửi trùng |
+| Chống SSRF endpoint lạ | Server | Hoạt động | Test push: từ chối http, IP nội bộ, host ngoài allowlist, khóa sai độ dài |
+| Thiếu khóa VAPID | Server | Hoạt động | Test push: `pushEnabled:false`, ẩn giao diện, server vẫn chạy |
+| Thông báo đẩy thật trên Android | Thiết bị thật | Chưa kiểm chứng | Cần PWA + HTTPS + khóa VAPID thật; xem `docs/REGRESSION_CHECKLIST.md` mục 5 |
+| Thông báo đẩy trên iPhone / iPad | Thiết bị thật | Chưa kiểm chứng | iOS 16.4+ chỉ PWA từ Màn hình chính; iPad không rung; âm/rung do hệ điều hành |
+| PWA + offline | AI 3×3 | Hoạt động | Browser: cache v14 (29 mục), chặn mạng vẫn chơi |
+| VI / EN | Mọi màn hình | Hoạt động | Browser đổi ngay; 379 khóa mỗi ngôn ngữ |
+| Responsive | 320 / 375 / 390 / 740 / 768 / 1024 px | Hoạt động | Browser: không tràn ngang, bàn cờ nằm trong viewport |
+| Chống zoom đúp / chọn chữ trên bàn | Mobile | Hoạt động | `touch-action: manipulation`, `user-select: none` trong CSS |
+| Vùng an toàn tai thỏ / Home | Mobile | Đã bổ sung (Phần B) | `.screen` dùng `env(safe-area-inset-*)` cả 4 phía, đáy hộp thoại có đệm; `viewport-fit=cover`; chưa kiểm chứng trên máy thật |
+| Apple meta + icon 180 | iOS Home Screen | Đã thêm (Phần B) | `apple-mobile-web-app-*`, `apple-touch-icon` 180×180 tạo từ SVG gốc; chưa cài trên iPhone thật |
+| Icon maskable | Android | Đã thêm (Phần B) | `icon-maskable-512.png` nền kem, vùng an toàn 51 px; manifest tách `any` và `maskable` |
+| Bàn phím ảo che ô nhập | Mobile | Giảm thiểu (Phần B) | `interactive-widget=resizes-content`, `scroll-margin-block` cho ô nhập, hộp thoại `86dvh`; chưa thử bàn phím thật |
+| Xoay ngang điện thoại | 740×360 | Hoạt động (mô phỏng) | Media query landscape co padding, thu bàn cờ; 6/6 viewport không tràn; chưa kiểm chứng máy thật |

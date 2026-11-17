@@ -289,7 +289,7 @@ còn engine/sfx/music chỉ lo phát.
 | `public/js/main.js` | Gọi `place`/`result`, khóa hiệu ứng một lần mỗi ván, góc nhìn online/AI/local/replay, không phát lại sau F5 |
 | `public/js/ui.js`, `public/css/style.css`, `public/assets/cats.js` | Hiệu ứng thắng (glow), thua (mưa, bàn xám), hòa (Zzz), tôn trọng `prefers-reduced-motion` |
 | `public/js/storage.js`, `public/index.html`, `public/js/i18n.js` | Ba thanh âm lượng 80/40/80, migrate khóa cũ, nhãn VI/EN, `aria-valuetext`, nút nghe thử |
-| `public/sw.js` | Cache `meo-meo-caro-v12` kèm các module âm thanh và `haptics.js` |
+| `public/sw.js` | Cache `meo-meo-caro-v14` kèm các module âm thanh, `haptics.js`, `push.js` và xử lý `push`/`notificationclick`/`pushsubscriptionchange` |
 | `test/audio.test.mjs` | 26 test Node với engine/timer giả |
 
 Quyết định đáng chú ý:
@@ -332,7 +332,7 @@ Chạy thật ngày 2026-11-08:
     không có confetti; phòng đóng thì tự về trang chủ.
   - Giảm chuyển động: không mưa/confetti/Zzz nhưng vẫn phát `lose`.
   - 360 px và English: không tràn ngang; thiếu Web Audio: không lỗi, UI vẫn chạy.
-  - PWA: cache `meo-meo-caro-v12`, chơi offline với máy được; không lỗi console.
+  - PWA: cache `meo-meo-caro-v13`, chơi offline với máy được; không lỗi console.
 
 Một số lần chạy đầu có lỗi do chính script QA, không phải sản phẩm: chờ cuộn mượt
 của thẻ kết quả chưa xong nên tọa độ bấm bị lệch; kịch bản online giả định A luôn
@@ -368,5 +368,188 @@ ngoài repo và đã được xoá.
   bật/tắt phát rung thử ngay.
 - Kiểm chứng: `npm run test:haptics` **5/5**; browser QA headless **5/5** — stub
   `navigator.vibrate` trong 2 context online, xác nhận đúng 35 ms khi nhận lượt,
-  không rung khi tự đánh/tắt công tắc, công tắc giữ sau tải lại, và cache v12 có
+  không rung khi tự đánh/tắt công tắc, công tắc giữ sau tải lại, và cache v13 có
   `haptics.js`. Tổng `npm test` lúc này **157/157**.
+
+## Rà soát trước giai đoạn mới (thông báo đẩy) — 2026-11-18
+
+Phần này **chỉ đọc và chạy thử**: không sửa mã sản phẩm. Mọi thay đổi mã bắt đầu
+từ Phần B. Bản sao lưu trước khi làm: tag git `backup-before-push` tại commit
+`034ac41` (đã gồm toàn bộ âm thanh và rung 35 ms).
+
+### Kết quả chạy thật
+
+- `npm install` sạch; `npm audit` báo **1 lỗ hổng mức high** trong `nodemailer`
+  6.10.1 (nhóm advisory GHSA về SMTP/addressparser). Bản sửa đề xuất là
+  `nodemailer@10.6.0` — **nâng major**, nên đợt này chỉ ghi nhận, không tự nâng.
+- `npm test`: **157/157 đạt**, không suite nào lỗi — ai 37, wake 8, server 37,
+  auth 15, history 8, password-reset 21, audio 26, haptics 5.
+- Server chạy với SQLite tạm: `GET /health` → `{"status":"ok"}`;
+  `GET /api/config` → `{"ok":true,"mailEnabled":false}`.
+- `NODE_ENV=production` không có `SESSION_SECRET`: server **từ chối khởi động**
+  (exit 1), đúng như thiết kế (`server.js:50-59`).
+- **PostgreSQL chưa được kiểm chứng**: môi trường không có `TEST_DATABASE_URL`,
+  `DATABASE_URL`, `psql` hay `pg_isready`. Đây là rủi ro lớn nhất trước khi triển
+  khai, nhất là khi thêm bảng `push_subscriptions` ở Phần C.
+- Chrome headless, **2 browser context độc lập** (thêm context cho mobile/PWA),
+  viewport desktop 1280×900 và mobile 360×740: **38/38 kịch bản đạt**:
+  - Trang chủ, tiêu đề, mở Cài đặt, đổi VI/EN, công tắc rung giữ sau tải lại.
+  - AI 3×3 Dễ chạy hết ván; bàn ∞ nhận chạm, số nước tăng.
+  - 2 người cùng máy chạy hết ván.
+  - 360 px: trang chủ, màn chuẩn bị, bàn cờ không tràn ngang; nút chế độ cao
+    >44 px; hộp Cài đặt nằm gọn trong viewport.
+  - Đăng ký 2 tài khoản; tạo phòng mã 5 ký tự; vào bằng mã; cả hai vào bàn.
+  - Rung: đúng **một** xung 35 ms ở bên đang chờ, bên vừa đánh **không** rung.
+  - Emote đến đối thủ; xin đi lại + đồng ý hoạt động.
+  - Ván online kết thúc, lưu lịch sử; đấu lại; F5 vào lại phòng; đối thủ đóng
+    tab được báo mất kết nối.
+  - Lịch sử có ván, mở replay, thống kê có bảng.
+  - Service worker active, cache `meo-meo-caro-v13` có `js/haptics.js`; chặn
+    mạng rồi tải lại vẫn chơi AI được.
+  - Không lỗi console ở cả 5 trang (bỏ qua đúng lỗi mạng chủ ý khi test offline).
+- Kiểm tra bổ sung: **8/8 đạt** — link mời `/?room=CODE` mở hộp thoại cho người
+  đã đăng nhập và vào bàn; đăng ký → đăng xuất → đăng nhập lại; đổi tên hồ sơ.
+- Script QA lần đầu có lỗi do chính script (điều kiện `dialog.open` bị đảo, gọi
+  `fill` lên `<select>`, chờ disconnect 26 giây chưa đủ, tài khoản thứ 5 bị rate
+  limit đăng ký 5/giờ/IP). Đã sửa script và chạy lại trên server/DB mới; không
+  phải lỗi sản phẩm.
+
+### Đối chiếu tài liệu với mã
+
+| Hạng mục | Kết quả |
+| --- | --- |
+| Phiên bản cache trong README/FEATURES/STATUS | Khớp `public/sw.js:5` → `meo-meo-caro-v13`; 28 mục precache đều tồn tại |
+| Số test trong tài liệu | Khớp `npm test` → **157/157** |
+| Bảng sự kiện Socket.IO | Khớp `socket.on(`/`emit(`; không thiếu sự kiện đang chạy |
+| Bảng API HTTP | Khớp 16 route `/api` + `/health` |
+| Khóa dịch | `vi` 379 = `en` 379, không thiếu khóa; **11 khóa chết** (bên dưới) |
+| Hướng dẫn trong app | Có luật, đi lại, âm thanh/nhạc; **chưa nhắc rung** và chưa có thông báo đẩy |
+| File mồ côi / import chết | Không phát hiện; mọi import và asset đều tồn tại |
+| `TODO`/`FIXME` | Không có |
+| `console.log` | Chỉ log có chủ đích ở `server.js:185` và `mailer.js:131` |
+| `.gitignore` | Có `node_modules`, `.env`, `.env.*` (giữ `.env.example`), `data/` |
+| Quét bí mật | Chỉ thấy placeholder rỗng trong `.env.example` và ví dụ trong README; không có `.env` được track |
+| Hành vi rung | Đúng điều kiện: online, `room:state` chuyển lượt do đối thủ, tab hiện, công tắc bật; test 5/5 + browser xác nhận; không rung khi tự đánh/F5/đấu lại |
+
+### Lỗi và rủi ro theo mức
+
+| Mức | Vấn đề | Vị trí | Cách xử lý đề xuất |
+| --- | --- | --- | --- |
+| **Cao** | PostgreSQL chưa được kiểm chứng; migration mới cho push có thể lệch SQLite/PostgreSQL | Không có DB trong môi trường; `db.js` | Chạy lại toàn bộ test và migration trên Neon/PostgreSQL trước khi deploy Phần C |
+| **Cao** | `nodemailer@6.10.1` có advisory mức high | `package.json` | Không tự nâng major trong đợt này; lên kế hoạch nâng 10.6.0 và chạy lại 21 test password-reset |
+| **Trung bình** | iPhone/iPad không thể rung khi đến lượt; tính năng hiện chỉ chạy Android Chrome | `public/js/main.js:2865`, `public/js/haptics.js` | Đúng giới hạn nền tảng; Phần C bổ sung Web Push và ghi rõ iPad không có động cơ rung |
+| **Trung bình** | 11 khóa i18n không được tham chiếu | `public/js/i18n.js` | Xóa hoặc nối vào UI ở Phần D: `greeting`, `hardLargeNote`, `turnLabel`, `recordLocal`, `winsAria`, `resetConfirm`, `resetDone`, `opponentOfflineError`, `cellTakenA`, `cellTakenB`, `cellTakenAria` |
+| **Thấp** | Thiếu meta Apple và `apple-touch-icon` 180×180 đúng chuẩn | `public/index.html:5-16` (đang trỏ icon 192) | Phần B thêm meta + icon 180 tạo từ SVG gốc |
+| **Thấp** | Manifest chỉ có một icon 512 khai báo `"any maskable"` | `public/manifest.json:25-29` | Phần B tách icon `any` và `maskable` riêng |
+| **Thấp** | Vùng an toàn mới dùng ở đáy một chỗ, chưa cho header/hộp thoại | `public/css/style.css:2080` | Phần B thêm `env(safe-area-inset-*)` cho thanh trên và modal |
+| **Thấp** | `.env.example` chưa có biến VAPID/push | `.env.example` | Phần C thêm |
+| **Thấp** | `/api/config` chưa trả `pushEnabled`/`vapidPublicKey` | `auth.js:444` | Phần C thêm |
+| **Thông tin** | Link mời yêu cầu đăng nhập trước khi hiện hộp thoại; khách vẫn vào được bằng mã | `public/js/main.js:4686-4700` | Đúng tài liệu; ghi vào checklist thủ công |
+
+### Sẵn sàng cho giai đoạn mới?
+
+**Chưa sẵn sàng để triển khai ngay**, nhưng **đủ sẵn sàng để bắt đầu Phần B/C** trên
+SQLite. Điều chặn duy nhất trước khi phát hành là **PostgreSQL chưa được kiểm
+chứng** — phải chạy lại test + migration trên một PostgreSQL thật (Neon/Render)
+trước khi deploy. Rủi ro thứ hai là `nodemailer` lỗi thời; không chặn tính năng
+push nhưng nên nâng có kế hoạch. Các lỗi còn lại đều nhỏ và đã có chỗ sửa (Phase
+B: PWA/mobile; Phase C: cấu hình push; Phase D: khóa i18n chết và tài liệu).
+Không có lỗi chức năng nào trong ma trận tính năng: mọi tính năng hiện có đều
+hoạt động trên SQLite và trong Chrome headless.
+
+## Nâng cấp nhắc “đến lượt bạn” + Web Push — 2026-11-18
+
+Các mục phía trên là **ảnh chụp lịch sử** của từng đợt (số test, cache v13, 28
+mục precache đúng ở thời điểm đó). Mục này là trạng thái sau khi hoàn tất Phần
+B–D; khi có khác biệt, mục này là bản đúng.
+
+### Phạm vi đã làm
+
+- **Phần B — trải nghiệm điện thoại:** `viewport-fit=cover`, `env(safe-area-inset-*)`
+  cả bốn phía, đơn vị `dvh/svh`, `interactive-widget=resizes-content`, đệm cho ô
+  nhập và hộp thoại, mục tiêu chạm ≥ 44 px, bố cục xoay ngang, icon maskable và
+  meta Apple + `apple-touch-icon` 180×180. Không dùng Wake Lock.
+- **Phần C — bốn lớp nhắc lượt, không lặp:** (1) tab hiện → tiếng `turn` sẵn có
+  và rung 35 ms trên Android; (2) tab ẩn nhưng còn sống → tiêu đề nhấp nháy
+  “● Đến lượt bạn” và huy hiệu ứng dụng; (3) nền/đóng/khoá máy → Web Push mở
+  đúng phòng; (4) iOS Safari 17.4+ → công tắc ẩn chỉ để thử rung trong thao tác
+  chạm, không dùng để kết luận push mạng sẽ rung.
+
+### Tệp chính
+
+| Tệp | Nội dung |
+| --- | --- |
+| `push.js` | Hàng đợi gửi, allowlist endpoint chống SSRF, VAPID, TTL 120 giây, urgency high, timeout 5 giây, chống gửi trùng 20 giây, dọn đăng ký hỏng |
+| `security.js` | Kiểm tra CSRF/Origin dùng chung cho các route JSON |
+| `db.js` | Migration `003_push_subscriptions` + hai index `device_id`, `user_id` |
+| `server.js` | Sự kiện `presence:set`, nhận `deviceId` khi tạo/vào/vào lại phòng, điều kiện gửi lượt, gửi khi có người vào phòng đang chờ |
+| `auth.js` | `/api/config` trả `pushEnabled`/`vapidPublicKey`; API subscribe/unsubscribe/test; gỡ đăng ký khi xoá tài khoản, bỏ liên kết khi đăng xuất |
+| `public/js/push.js` | Dò môi trường iOS/standalone/HTTPS, phân loại trạng thái, đăng ký/huỷ, đếm nhấp nháy tiêu đề, gửi `presence:set` |
+| `public/js/haptics.js` | Rung lượt 35 ms và đường thử `switch` iOS chỉ trong thao tác chạm |
+| `public/sw.js` | Cache `meo-meo-caro-v14` (29 mục); xử lý `push`, `notificationclick`, `pushsubscriptionchange`, giữ meta thiết bị để tự đăng ký lại |
+| `public/js/main.js` | Nối push vào vòng đời ván, chỉ nhắc khi đúng lượt và tab ẩn, mở phòng từ thông báo |
+| `public/index.html`, `public/css/style.css`, `public/js/i18n.js` | Thẻ thông báo trong Cài đặt, trạng thái rõ ràng, chuỗi VI/EN (415 khóa mỗi ngôn ngữ), phong cách di động |
+| `scripts/vapid-generate.js` | `npm run vapid:generate` tạo cặp khóa, không ghi ra repo |
+| `test/push.test.mjs`, `test/push-client.test.mjs`, `test/sw.test.mjs` | 18 + 16 + 17 test cho máy chủ, client và service worker |
+| `docs/FEATURES.md`, `README.md`, `docs/REGRESSION_CHECKLIST.md` | Mô tả bốn lớp, giới hạn nền tảng, cách bật, kịch bản kiểm thử máy thật |
+
+Bản sao lưu trước khi sửa vẫn là tag git `backup-before-push` tại commit
+`034ac41`.
+
+### Kiểm chứng tự động
+
+- `npm test`: **208/208 đạt**, exit 0 — ai 37, wake 8, server 37, auth 15,
+  history 8, password-reset 21, audio 26, haptics 5, push-client 16, sw 17,
+  push 18.
+- Test push chạy hai lần trên server/DB mới đều đạt, gồm: presence ẩn/hiện,
+  không gửi cho người vừa đi, không gửi khi có undo chờ, giới hạn 20 giây,
+  endpoint http/IP nội bộ/host lạ bị từ chối, khóa sai kích thước bị từ chối,
+  thiếu VAPID thì `pushEnabled:false`, xoá tài khoản gỡ đăng ký.
+- Test service worker chạy trong `node:vm` với Cache/Response giả: 29 mục
+  precache, định tuyến fetch và fallback offline, nội dung thông báo mặc định và
+  cắt ngắn, `notificationclick` focus/postMessage/mở cửa sổ, `pushsubscriptionchange`
+  đủ nhánh.
+
+### Kiểm chứng trình duyệt (Chrome headless)
+
+- QA push: **11/11 đạt** — cấp quyền thông báo, service worker v14 kiểm soát
+  trang với 29 mục app shell, bật đăng ký, trạng thái chuyển đúng, tắt trả về
+  “sẵn sàng”, nút gửi thử hiện toast, `ServiceWorker.deliverPushMessage` hiện
+  đúng tiêu đề/tag `turn-…`/`./?room=CODE`, tiêu đề nhấp nháy rồi khôi phục,
+  console sạch.
+- QA mobile + tiếng Anh: **2/2 đạt** — 360×740 không tràn ngang, thẻ push rộng
+  296 px, nút cao 46 px, hộp thoại không tràn; chuỗi tiếng Anh đúng, không lẫn
+  dấu tiếng Việt.
+- Các đợt trước vẫn giữ nguyên bằng chứng: 38/38 + 8/8 kịch bản online/PWA/mobile.
+
+### Lỗi phát hiện và đã sửa
+
+- Không phát hiện lỗi sản phẩm mới trong QA push. Các lỗi gặp phải đều thuộc
+  script/test: kỳ vọng mã đăng ký 200 thay vì 201; giả định người chơi A luôn đi
+  trước trong khi server chọn ngẫu nhiên; đọc cache hai lần làm cạn body; test
+  service worker so sánh object khác realm; đường dẫn riêng bị tiền tố `/app/`.
+  Tất cả đã sửa và chạy lại đạt.
+- 11 khóa i18n chết từ báo cáo trước đã được xoá; hiện `vi` và `en` đều 415 khóa,
+  không thiếu, không thừa.
+
+### Chưa kiểm chứng trên máy thật
+
+- Rung khi nhận lượt trên Android thật; thông báo hệ thống khi khoá màn hình,
+  khi vuốt app khỏi đa nhiệm, khi bật Không làm phiền/công tắc im lặng.
+- Cài PWA và nhận push trên iPhone (iOS 16.4+) và iPad; iPad **không có động cơ
+  rung** nên chỉ có banner/âm thanh.
+- Gửi push thật qua FCM/Apple/Mozilla/WNS bằng khóa VAPID thật; đợt này chỉ dùng
+  `PUSH_PROVIDER=test`.
+- Vùng an toàn tai thỏ/Home, bàn phím ảo và xoay ngang trên thiết bị thật.
+- **PostgreSQL vẫn chưa được kiểm chứng** (không có DB trong môi trường). Phải
+  chạy migration `003_push_subscriptions` và toàn bộ test trên Neon/Render trước
+  khi phát hành.
+
+### Rủi ro còn lại
+
+- `npm audit` vẫn báo **1 lỗ hổng high** ở `nodemailer@6.10.1`; bản sửa là
+  `10.6.0` (nâng major), chưa tự nâng trong đợt này.
+- Push thật phụ thuộc dịch vụ ngoài; endpoint hỏng được dọn theo 404/410,
+  `fail_count > 5` hoặc 60 ngày không thành công.
+- iPhone Safari dạng tab không nhận push; chỉ PWA từ Màn hình chính. Không có
+  cách nào để trang web tự bật rung trên iOS.
