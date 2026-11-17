@@ -109,6 +109,7 @@ const DEFAULT_SETTINGS = {
   volumeSfx: AUDIO_DEFAULTS.volumeSfx,
   lang: 'vi',
   reduceMotion: false,
+  haptics: true,
   boardSize: 3,
 };
 
@@ -129,6 +130,7 @@ export function loadSettings() {
     ...audio,
     lang: saved.lang === 'en' ? 'en' : 'vi',
     reduceMotion: saved.reduceMotion === true,
+    haptics: typeof saved.haptics === 'boolean' ? saved.haptics : DEFAULT_SETTINGS.haptics,
     boardSize: validSize(saved.boardSize) ? saved.boardSize : DEFAULT_SETTINGS.boardSize,
   };
   if (hasLegacyVolumes) {
@@ -143,6 +145,7 @@ export function saveSettings(settings) {
     ...audio,
     lang: settings.lang === 'en' ? 'en' : 'vi',
     reduceMotion: settings.reduceMotion === true,
+    haptics: settings.haptics !== false,
     boardSize: validSize(settings.boardSize) ? settings.boardSize : DEFAULT_SETTINGS.boardSize,
   });
 }

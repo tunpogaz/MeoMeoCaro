@@ -329,6 +329,8 @@ export const STRINGS = {
     youLoseTitle: 'Bạn thua rồi, thử lại nhé!',
     reduceMotion: 'Giảm chuyển động',
     reduceMotionDesc: 'Tắt hiệu ứng nhảy nhót cho dễ chịu hơn.',
+    haptics: 'Rung khi đến lượt',
+    hapticsDesc: 'Rung nhẹ khi đối thủ đi xong và đến lượt bạn (điện thoại hỗ trợ).',
     language: 'Ngôn ngữ',
 
     loading: 'Đang gọi mèo…',
@@ -737,6 +739,8 @@ export const STRINGS = {
     youLoseTitle: 'You lost this one — try again!',
     reduceMotion: 'Reduce motion',
     reduceMotionDesc: 'Turn off bouncy animations.',
+    haptics: 'Vibrate on your turn',
+    hapticsDesc: 'A light buzz when the opponent moves and it is your turn (supported phones).',
     language: 'Language',
 
     loading: 'Calling the cats…',

@@ -28,6 +28,7 @@ import {
 } from '../assets/cats.js';
 import * as audio from './audio.js';
 import { clampVolume, resultEffectKey, resultPerspective } from './audio-logic.js';
+import { vibrateTurn } from './haptics.js';
 import {
   initBoard,
   setBoardSize,
@@ -2869,6 +2870,7 @@ function applyOnlineState(next, options = {}) {
     !document.hidden
   ) {
     audio.play('turn');
+    vibrateTurn({ enabled: state.settings.haptics !== false });
   }
 
   if (next.status === 'waiting') {
@@ -4061,6 +4063,7 @@ function populateSettings() {
   $('set-sound').checked = state.settings.sound;
   $('set-music').checked = state.settings.music;
   $('set-motion').checked = state.settings.reduceMotion;
+  $('set-haptics').checked = state.settings.haptics !== false;
   $('set-lang').value = state.settings.lang;
   syncVolumeControls();
   audio.setVolumes(volumePayload());
@@ -4591,6 +4594,13 @@ function setupDialogs() {
     state.settings.reduceMotion = event.target.checked;
     document.body.classList.toggle('reduce-motion', state.settings.reduceMotion);
     saveSettings(state.settings);
+  });
+
+  $('set-haptics').addEventListener('change', (event) => {
+    state.settings.haptics = event.target.checked;
+    saveSettings(state.settings);
+    // Cu chi nay la thao tac nguoi dung, tien de thu rung ngay tren may.
+    if (state.settings.haptics) vibrateTurn();
   });
 
   $('set-lang').addEventListener('change', (event) => {

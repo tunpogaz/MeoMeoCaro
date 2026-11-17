@@ -164,6 +164,7 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 
 - Công tắc **Âm thanh** (tổng) và **Nhạc nền**; ba thanh **Tổng / Nhạc nền / Hiệu ứng** 0–100, bước 5, mặc định 80/40/80, kéo là áp dụng ngay, nhả thanh Hiệu ứng phát một tiếng mèo nhỏ.
 - Nút nghe thử: mèo cam, mèo xám, thắng, thua, hòa, lêu lêu và bật/tắt nhạc. Nghe thử hoạt động cả trước lần chạm đầu (nút tự mở khóa audio).
+- Công tắc **Rung khi đến lượt** (mặc định bật): khi đối thủ đi xong và đến lượt bạn, điện thoại rung nhẹ 35 ms đúng một lần. Tự đánh không rung; tab ẩn không rung; máy/trình duyệt không hỗ trợ Vibration API thì im lặng. Lựa chọn lưu trong `localStorage` và tải lại vẫn giữ.
 - Giá trị lưu trong `localStorage`, tự chuyển các khóa cũ (`masterVolume`, `volume`, `musicVolume`, `sfxVolume`, ...) sang cấu trúc mới; giá trị hỏng bị kẹp về 0–1 thay vì làm hỏng app. Thanh trượt có nhãn, `aria-valuetext` ("40 phần trăm"), thao tác được bằng phím và đủ lớn cho cảm ứng.
 
 **Cách kiểm tra**
@@ -174,6 +175,7 @@ Toàn bộ giao diện có tiếng Việt và tiếng Anh, bố cục responsive
 4. Online hai máy: mỗi bên nghe đúng thắng/thua, hiệu ứng đúng một lần; F5 khi đã xong không phát lại.
 5. Bật Giảm chuyển động rồi thua → không mưa/confetti nhưng vẫn có âm và chữ.
 6. Muốn đọc log kiểm thử: đặt `window.__MMC_TEST__ = true` trước khi tải trang, sau đó đọc `window.__MMC_AUDIO_LOG` (rỗng trước tương tác).
+7. Trên Android Chrome, chơi online hai máy: đối thủ đi xong thì máy bạn rung nhẹ; tắt **Rung khi đến lượt** trong Cài đặt rồi thử lại thì không rung.
 
 ## 8. Sự kiện Socket.IO
 

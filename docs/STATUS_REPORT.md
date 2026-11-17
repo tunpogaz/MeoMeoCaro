@@ -289,7 +289,7 @@ còn engine/sfx/music chỉ lo phát.
 | `public/js/main.js` | Gọi `place`/`result`, khóa hiệu ứng một lần mỗi ván, góc nhìn online/AI/local/replay, không phát lại sau F5 |
 | `public/js/ui.js`, `public/css/style.css`, `public/assets/cats.js` | Hiệu ứng thắng (glow), thua (mưa, bàn xám), hòa (Zzz), tôn trọng `prefers-reduced-motion` |
 | `public/js/storage.js`, `public/index.html`, `public/js/i18n.js` | Ba thanh âm lượng 80/40/80, migrate khóa cũ, nhãn VI/EN, `aria-valuetext`, nút nghe thử |
-| `public/sw.js` | Cache `meo-meo-caro-v11` kèm các module âm thanh mới |
+| `public/sw.js` | Cache `meo-meo-caro-v12` kèm các module âm thanh và `haptics.js` |
 | `test/audio.test.mjs` | 26 test Node với engine/timer giả |
 
 Quyết định đáng chú ý:
@@ -332,7 +332,7 @@ Chạy thật ngày 2026-11-08:
     không có confetti; phòng đóng thì tự về trang chủ.
   - Giảm chuyển động: không mưa/confetti/Zzz nhưng vẫn phát `lose`.
   - 360 px và English: không tràn ngang; thiếu Web Audio: không lỗi, UI vẫn chạy.
-  - PWA: cache `meo-meo-caro-v11`, chơi offline với máy được; không lỗi console.
+  - PWA: cache `meo-meo-caro-v12`, chơi offline với máy được; không lỗi console.
 
 Một số lần chạy đầu có lỗi do chính script QA, không phải sản phẩm: chờ cuộn mượt
 của thẻ kết quả chưa xong nên tọa độ bấm bị lệch; kịch bản online giả định A luôn
@@ -355,3 +355,18 @@ ngoài repo và đã được xoá.
 - Trình duyệt không hỗ trợ Web Audio thì im lặng hoàn toàn; mọi thông tin vẫn có
   ở chữ, màu và `aria-live`.
 - Phòng online nằm trong RAM; âm thanh không thay đổi giới hạn này.
+
+
+### Bổ sung: rung khi đến lượt
+
+- `public/js/haptics.js`: `vibrationSupported()` và `vibrateTurn({ enabled, visible, nav })`;
+  pattern 35 ms, gọi `navigator.vibrate` đúng ngữ cảnh, nuốt lỗi và trả `false` nếu
+  máy không hỗ trợ. Cờ `visible` bỏ qua khi tab ẩn.
+- `main.js` gọi cùng chỗ với âm `turn` (khi `room:state` chuyển lượt sang bạn),
+  nên mỗi lượt chỉ rung một lần, không rung khi tự đánh hoặc khi F5 khôi phục.
+- Cài đặt có công tắc **Rung khi đến lượt**, mặc định bật, lưu cùng `localStorage`;
+  bật/tắt phát rung thử ngay.
+- Kiểm chứng: `npm run test:haptics` **5/5**; browser QA headless **5/5** — stub
+  `navigator.vibrate` trong 2 context online, xác nhận đúng 35 ms khi nhận lượt,
+  không rung khi tự đánh/tắt công tắc, công tắc giữ sau tải lại, và cache v12 có
+  `haptics.js`. Tổng `npm test` lúc này **157/157**.

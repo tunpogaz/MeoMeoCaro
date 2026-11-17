@@ -20,16 +20,16 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Cỡ bàn | 3×3 và **∞ vô cực**. Luật thắng: 3 quân (3×3), 5 quân (∞); chuỗi dài hơn vẫn thắng. Bàn ∞ dùng toạ độ nguyên (có số âm), vùng chơi ban đầu 9×9 quanh (0,0), tự mở rộng 2 ô quanh quân xa nhất; khi đi lại, vùng có thể co về nhưng không nhỏ hơn khung 9×9 ban đầu; hòa khi chạm giới hạn kỹ thuật 2000 nước |
 | AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax đầy đủ trên 3×3 nên không thể thua. Bàn ∞ dùng danh sách ô gần quân, iterative deepening sâu 3–4 trong Web Worker (~800ms), trả nước hợp lệ kể cả khi hết thời gian |
 | Bàn cờ | Lưới 3×3 dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo. Bàn ∞ vẽ bằng Canvas có ảo hoá ô, kéo để di chuyển, cuộn/chụm để thu phóng, nút ± / về giữa / tới nước vừa đánh, mũi tên chỉ nước ngoài màn hình và hoạt ảnh mở rộng vùng |
-| Âm thanh & nhạc | Nhạc menu tự soạn 92 BPM (pentatonic trưởng, 8 ô nhịp, pad/pluck/bass/kick/hat/chuông mèo), tự dừng khi vào ván và trở lại khi về menu. Tiếng mèo cam/mèo xám khác cao độ, có biến thiên nhẹ; mèo của mình rõ hơn, mèo đối thủ nhỏ hơn và lệch tai. Thắng/thua/hòa có âm riêng theo góc nhìn từng người; đi lại, lêu lêu, lượt mới, biểu cảm, bấm nút đều có âm. Toàn bộ tổng hợp bằng Web Audio, không có file âm thanh ngoài |
+| Âm thanh & nhạc | Nhạc menu tự soạn 92 BPM (pentatonic trưởng, 8 ô nhịp, pad/pluck/bass/kick/hat/chuông mèo), tự dừng khi vào ván và trở lại khi về menu. Tiếng mèo cam/mèo xám khác cao độ, có biến thiên nhẹ; mèo của mình rõ hơn, mèo đối thủ nhỏ hơn và lệch tai. Thắng/thua/hòa có âm riêng theo góc nhìn từng người; đi lại, lêu lêu, lượt mới, biểu cảm, bấm nút đều có âm. Đến lượt mình trên điện thoại hỗ trợ thì máy rung nhẹ (35 ms, tắt được trong Cài đặt). Toàn bộ tổng hợp bằng Web Audio, không có file âm thanh ngoài |
 | Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang trên màn 320px; bàn ∞ dùng `touch-action: none` để chạm/kéo/chụm không cuộn trang, có nhãn toạ độ, tổng số nước và thông báo cho trình đọc màn hình |
 | Tài khoản | Đăng ký / đăng nhập / đăng xuất, ghi nhớ phiên, hồ sơ (tên hiển thị + avatar), đổi mật khẩu (thu hồi các phiên khác), xoá tài khoản mềm. Khi bật email: xác thực địa chỉ bằng link, quên/đặt lại mật khẩu bằng link dùng một lần, đổi email qua bước xác thực email mới, banner nhắc xác thực. Tên đăng nhập 3–20 ký tự `[a-zA-Z0-9_]`, không phân biệt hoa thường; mật khẩu 8–72 ký tự, chặn mật khẩu phổ biến và trùng tên đăng nhập; thanh độ mạnh mật khẩu; lỗi hiển thị theo mã đã dịch. Khách vẫn chơi AI / 2 người / online nhưng không lưu lịch sử |
 | Lịch sử & thống kê | Chỉ lưu ván online có ít nhất một tài khoản; mỗi ván lưu một lần (thắng, hoà, chạm giới hạn nước, mất kết nối, rời phòng), đấu lại tạo bản ghi mới. Danh sách có phân trang (≤50), lọc theo cỡ bàn và kết quả; chi tiết chỉ người trong ván xem được (người ngoài nhận 404). Thống kê thắng/hoà/thua và tỷ lệ thắng theo từng cỡ bàn. Đối thủ đã xoá tài khoản hiển thị là "Người chơi đã xóa" |
 | Xem lại ván | Trình phát lại chỉ đọc dùng lại bàn 3×3 hoặc Canvas ∞: nút đầu / trước / phát–tạm dừng / sau / cuối, thanh tua, tốc độ 0.5×–4×, bộ đếm nước, đánh dấu nước hiện tại và vẽ đường thắng ở nước cuối |
 | Lời mời | Link `location.origin/?room=CODE`, sao chép và chia sẻ. Khách mở link được đưa tới đăng nhập/đăng ký hoặc "Chơi với tư cách khách" rồi tự vào phòng, giữ nguyên mã phòng. Tài khoản đã đăng nhập thấy hộp xác nhận cỡ bàn / luật / chủ phòng trước khi vào. Mã sai, phòng đầy hoặc đã đóng báo rõ và tự bỏ `?room` khỏi URL. Chờ server thức dậy 30–90 giây với thông báo trạng thái |
-| Cài đặt | Bật/tắt tổng âm thanh và nhạc nền; ba thanh âm lượng Tổng / Nhạc nền / Hiệu ứng (0–100, bước 5, mặc định 80/40/80, lưu ngay và tự chuyển giá trị cũ); nghe thử mèo cam, mèo xám, thắng, thua, hòa, lêu lêu và nhạc; giảm chuyển động; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
+| Cài đặt | Bật/tắt tổng âm thanh và nhạc nền; ba thanh âm lượng Tổng / Nhạc nền / Hiệu ứng (0–100, bước 5, mặc định 80/40/80, lưu ngay và tự chuyển giá trị cũ); nghe thử mèo cam, mèo xám, thắng, thua, hòa, lêu lêu và nhạc; giảm chuyển động; bật/tắt rung khi đến lượt; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
 | Lưu trữ | localStorage: hồ sơ khách, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3. Tài khoản và lịch sử nằm ở database phía server |
 | Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (3×3 hoặc ∞), đồng hồ 30 giây/lượt (∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi. **Đi lại:** chế độ với máy hoàn tác ngay; online gửi yêu cầu cho đối thủ (15 giây, tối đa 3 lần/ván, cooldown 10 giây sau khi bị từ chối/hết giờ) |
-| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞, `api.js` và `wake.js`, cache v10), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
+| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞, `api.js` và `wake.js`, cache v12), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
 | Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; token đặt lại/xác thực email cũng 32 byte, chỉ lưu SHA-256 và dùng một lần; link email luôn dựng từ `PUBLIC_URL`, token chỉ nằm trong URL fragment; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập/quên mật khẩu/đổi email; Helmet + CSP + `Referrer-Policy: no-referrer`; SQL tham số hoá; không trả `password_hash`, `token_hash`, email đầy đủ của người khác hay `user_id` của người khác |
 
 ---
@@ -65,7 +65,7 @@ meo-meo-caro/
 ├── public/
 │   ├── index.html            # các màn hình game, tài khoản, hồ sơ, lịch sử, thống kê, dialog
 │   ├── manifest.json         # PWA manifest
-│   ├── sw.js                 # service worker: app shell + offline AI (cache v11)
+│   ├── sw.js                 # service worker: app shell + offline AI (cache v12)
 │   ├── css/
 │   │   └── style.css         # giao diện bàn 3×3, tài khoản/lịch sử/replay, responsive
 │   ├── assets/
@@ -87,6 +87,7 @@ meo-meo-caro/
 │       ├── online.js         # bọc Socket.IO phía client
 │       ├── ui.js             # render bàn 3×3, hiệu ứng, toast, timer, confetti
 │       ├── audio.js          # facade duy nhất: unlock, scene, âm lượng, nghe thử, log test
+│       ├── haptics.js        # rung nhẹ khi đến lượt, tự bỏ qua máy không hỗ trợ
 │       ├── audio-engine.js   # một AudioContext, bus nhạc/SFX, reverb, giới hạn 16 voice
 │       ├── audio-logic.js    # logic thuần: góc nhìn kết quả, scene, buildBar, migrate cài đặt
 │       ├── sfx.js            # công thức tiếng mèo, thắng/thua/hòa, đi lại, lêu lêu, UI
@@ -100,7 +101,8 @@ meo-meo-caro/
     ├── history.test.mjs      # lưu ván, lịch sử, replay, thống kê, quyền truy cập
     ├── wake.test.mjs         # giữ đăng nhập khi lỗi mạng, backoff, offline, 4xx
     ├── password-reset.test.mjs # email xác thực, quên/đặt lại mật khẩu, đổi email, rate limit
-    └── audio.test.mjs        # logic thuần, engine giả, SFX, nhạc, facade, migrate cài đặt
+    ├── audio.test.mjs        # logic thuần, engine giả, SFX, nhạc, facade, migrate cài đặt
+    └── haptics.test.mjs      # rung đúng một lần, tắt/ẩn tab/không hỗ trợ/lỗi
 ```
 
 ---
@@ -131,7 +133,7 @@ npm run migrate
 Chạy test:
 
 ```bash
-npm test            # 152 test: ai + wake + server + auth + history + password-reset + audio
+npm test            # 157 test: ai + wake + server + auth + history + password-reset + audio + haptics
 ```
 
 > Các module ES yêu cầu chạy qua HTTP, không mở trực tiếp `public/index.html` bằng `file://`.
@@ -347,14 +349,14 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
 - Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online và tài khoản cần server.
 - Service worker **không cache** `/api/*`, `/socket.io/*` hay `/health`, nên lịch sử và phiên đăng nhập luôn lấy dữ liệu mới.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v11`) để người dùng nhận bản mới. Cache v11 đã gồm `api.js`, `wake.js`, `game-core.js`, toàn bộ module bàn ∞/AI, giao diện đi lại và 5 module âm thanh (`audio.js`, `audio-engine.js`, `audio-logic.js`, `sfx.js`, `music.js`); không có tệp cũ bị xoá.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v12`) để người dùng nhận bản mới. Cache v12 đã gồm `api.js`, `wake.js`, `game-core.js`, toàn bộ module bàn ∞/AI, giao diện đi lại, 5 module âm thanh (`audio.js`, `audio-engine.js`, `audio-logic.js`, `sfx.js`, `music.js`) và `haptics.js`; không có tệp cũ bị xoá.
 
 ### Âm thanh và nhạc nền
 
 - **Tự tổng hợp:** toàn bộ tiếng mèo, tiếng kết quả và nhạc menu được tạo bằng Web Audio (oscillator/filter/noise/reverb), không tải file âm thanh và không dùng giai điệu có bản quyền. Nhạc menu 92 BPM, 4/4, thang pentatonic trưởng, vòng 8 ô nhịp; mỗi lần vào có biến thể nhỏ.
 - **Một nguồn phát:** một `AudioContext` duy nhất, tạo sau thao tác đầu tiên; trước đó mọi lệnh phát được bỏ qua nhưng yêu cầu bật nhạc được ghi nhớ. Tab ẩn thì treo context và tạm dừng nhạc, hiện lại thì tiếp tục. Tắt tiếng dừng cả nhạc lẫn hiệu ứng; bật lại phục hồi.
 - **Theo góc nhìn:** online so `winner` với ký hiệu của người xem; AI so với người chơi; 2 người cùng máy luôn coi là thắng (không có "thua" cục bộ); replay không phát âm kết quả. Mỗi ván/round chỉ phát hiệu ứng kết quả một lần, kể cả khi F5, rejoin hoặc nhận `room:state` lặp.
-- **Cài đặt:** tổng âm thanh, nhạc nền, ba thanh âm lượng 0–100 bước 5 (mặc định 80/40/80), nút nghe thử từng âm. Giá trị lưu vào `localStorage` và tự chuyển các khóa cũ (`masterVolume`, `volume`, `musicVolume`, `sfxVolume`, ...); giá trị hỏng bị kẹp thay vì làm hỏng app.
+- **Cài đặt:** tổng âm thanh, nhạc nền, ba thanh âm lượng 0–100 bước 5 (mặc định 80/40/80), nút nghe thử từng âm, công tắc rung khi đến lượt (mặc định bật; máy không hỗ trợ thì im lặng). Giá trị lưu vào `localStorage` và tự chuyển các khóa cũ (`masterVolume`, `volume`, `musicVolume`, `sfxVolume`, ...); giá trị hỏng bị kẹp thay vì làm hỏng app.
 - **Giới hạn:** chất lượng là âm tổng hợp kiểu chiptune/đồ chơi, không phải nhạc thu; iOS cần một lần chạm để mở khóa; công tắc im lặng của iPhone có thể tắt toàn bộ Web Audio. Âm thanh không phải kênh thông tin duy nhất — mọi trạng thái vẫn có chữ, màu và `aria-live`.
 - **Cách thử nhanh:** Cài đặt → bấm lần lượt các nút nghe thử; sau đó vào một ván AI, đánh vài nước, thắng/thua để nghe kết quả. Muốn kiểm tra log: đặt `window.__MMC_TEST__ = true` trước khi tải trang rồi đọc `window.__MMC_AUDIO_LOG`.
 
@@ -363,7 +365,7 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 ## Kiểm thử tự động
 
 ```bash
-npm test                  # 152 test: ai + wake + server + auth + history + password-reset + audio
+npm test                  # 157 test: ai + wake + server + auth + history + password-reset + audio + haptics
 npm run test:ai           # 37 test
 npm run test:wake         # 8 test
 npm run test:server       # 37 test
@@ -382,6 +384,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 - `test/password-reset.test.mjs` (21 test): `mailEnabled`/`no-store`, đăng ký + thư xác thực, DB chỉ lưu hash token, xác thực một lần, link dựng từ `PUBLIC_URL` (không theo Host giả), phản hồi quên mật khẩu luôn giống nhau cho email lạ/chưa xác thực/đã xoá, kiểm tra token, mật khẩu yếu, đặt lại mật khẩu + thu hồi phiên + thư thông báo, token cũ bị vô hiệu, hai request đồng thời chỉ một thắng, token hết hạn, chuẩn hoá email, trùng email chưa xác thực rồi `EMAIL_TAKEN`, đổi email giữ email cũ tới khi xác thực, resend vô hiệu token cũ, xoá tài khoản xoá email/token và ẩn danh tên trong `matches` (đối thủ vẫn xem lịch sử), không lộ token trong log/response, rate limit quên mật khẩu/resend, server không cấu hình mail vẫn chạy.
 - `test/history.test.mjs` (8 test): khách với khách không lưu ván; ván một tài khoản + khách lưu ảnh chụp đối thủ; chi tiết replay có đủ nước/đường thắng và chỉ người trong ván xem được; phân trang/lọc cỡ bàn/lọc kết quả + thống kê; đấu lại tạo bản ghi mới; thắng rồi ngắt kết nối chỉ lưu một lần; đối thủ xoá tài khoản hiển thị ẩn danh; **ván 4×4–8×8 cũ vẫn nằm trong DB nhưng bị ẩn khỏi danh sách, chi tiết và thống kê**.
 - `test/audio.test.mjs` (26 test): bảng scene menu/khác, góc nhìn kết quả online/AI/2 người/replay, kẹp âm lượng và đường cong, migrate khóa âm lượng cũ, `buildBar` 8 ô nhịp/pentatonic, engine tạo context sau unlock, giới hạn 16 voice (không bỏ âm ưu tiên), node về 0 sau khi phát, SFX cam/xám khác nhau + pan đối thủ, nhạc một bộ phát/timer được xoá, timer mặc định không phụ thuộc `this` (lỗi Illegal invocation trên Chrome), facade log đúng trước/sau tương tác, menu→menu không bật lại, vào ván dừng nhạc, nghe thử trước unlock, tab ẩn suspend/resume, tắt/bật âm thanh, và storage migrate cài đặt.
+- `test/haptics.test.mjs` (5 test): rung đúng một lần với pattern 35 ms, tôn trọng công tắc, không rung khi tab ẩn, máy không hỗ trợ, `vibrate` trả `false`/ném lỗi đều không làm hỏng game.
 
 ---
 
@@ -420,7 +423,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 29 | Hết giờ bàn ∞ | Chạy `TURN_MS=2000 npm start`, chơi online ∞, không đánh | Sau ~2 giây máy chủ tự đánh ô trống hợp lệ, ván tiếp tục, không bị xử thua; khi chạy thật là 45 giây |
 | 30 | ∞: F5 và đấu lại | Hai cửa sổ phòng ∞, đánh vài nước, F5, đấu lại | F5 khôi phục đủ nước, vùng, nước cuối và lượt; đấu lại reset bàn ∞ và đổi người đi trước |
 | 31 | Bàn phím & i18n ∞ | Dùng Tab/mũi tên tới sát biên vùng; đổi sang English | Không lọt ra ngoài vùng; nhãn đọc đúng toạ độ; tên cỡ bàn, luật thắng, bộ lọc điểm đổi sang tiếng Anh |
-| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v10` xoá cache cũ, app shell và module AI/∞ mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
+| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v12` xoá cache cũ, app shell và module AI/∞ mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
 | 33 | ∞: nhập môn & điều khiển | Chọn ∞, dùng phím mũi tên + Enter; kéo chuột; cuộn/chụm; bấm ±, về giữa, tới nước vừa đánh | Ô (0,0) ở giữa; con trỏ luôn hiện; kéo >6px không đặt quân; zoom trong khoảng 24–96px; nút về giữa/tới nước vừa đánh hoạt động; không lỗi console |
 | 34 | ∞: vùng tự mở rộng | Đánh ra sát biên rồi ra ngoài vùng cũ | Vùng trắng mở thêm 2 ô quanh quân xa nhất có hoạt ảnh ~250ms, không co lại; ô ngoài vùng bị làm mờ và bấm vào chỉ nhấp nháy cảnh báo |
 | 35 | ∞: thắng và overline | Tạo 5 quân ngang/dọc/chéo ở toạ độ âm; tạo chuỗi 6 quân | Thắng đúng, sợi len nối trọn chuỗi (kể cả >5), thẻ kết quả đúng người thắng, có thông báo cho trình đọc màn hình |
@@ -456,13 +459,14 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 65 | Online: hết giờ / hủy | A xin rồi để hết 15 giây; lặp lại rồi bấm **Hủy xin** | Hết giờ: A thấy "Đối thủ không trả lời." (không phải lời từ chối); hủy: B thấy "Đối thủ đã hủy xin đi lại.", hộp thoại đóng, bàn giữ nguyên |
 | 66 | Online: Enter/Esc và 360px | Mở hộp thoại xin đi lại, bấm Enter rồi Esc; thu cửa sổ 360px | Enter không đồng ý và không đổi bàn; Esc = từ chối; hộp thoại + bong bóng không tràn ngang, chữ đọc được |
 | 67 | Online: F5 khi đang xin | A xin đi lại rồi F5 | Server hủy yêu cầu, A vào lại đúng bàn, không kẹt hộp thoại/banner, vẫn đánh tiếp được; B thấy hộp thoại đóng |
-| 68 | PWA offline + đi lại | Cài PWA, chơi online một lần cho cache, chặn mạng, tải lại, chơi AI rồi **Đi lại** | Trang và module tải từ cache v11, AI 3×3 chạy và đi lại được khi offline, tiếng đặt quân vẫn phát sau một lần chạm, không lỗi console |
+| 68 | PWA offline + đi lại | Cài PWA, chơi online một lần cho cache, chặn mạng, tải lại, chơi AI rồi **Đi lại** | Trang và module tải từ cache v12, AI 3×3 chạy và đi lại được khi offline, tiếng đặt quân vẫn phát sau một lần chạm, không lỗi console |
 | 69 | Chạm đầu tiên & nhạc menu | Mở app, chưa chạm gì rồi chạm một lần | Trước khi chạm không có âm thanh; chạm xong nhạc menu nổi lên ~1,2 giây; vào ván nhạc tắt dần ~0,7 giây; về menu nhạc trở lại, menu→menu không bị bật lại |
 | 70 | Âm lượng & nghe thử | Cài đặt → kéo ba thanh Tổng/Nhạc/Hiệu ứng, bấm từng nút nghe thử, tải lại trang | Giá trị đổi ngay không rè; thanh Hiệu ứng nhả tay phát tiếng mèo nhỏ; mặc định 80/40/80; sau tải lại vẫn giữ; nút nhạc bật/tắt được ngay cả trước khi chạm lần đầu |
 | 71 | Tiếng đặt quân | Chơi AI và 2 người cùng máy; chơi online hai máy | Mèo cam và mèo xám khác cao độ; với AI, quân của mình rõ hơn, quân máy nhỏ hơn; 2 người cùng máy không lệch tai; online mỗi bên nghe quân mình rõ, quân đối thủ nhỏ và lệch tai; mỗi nước đúng một tiếng kể cả khi F5/`room:state` lặp |
 | 72 | Hiệu ứng thắng/thua/hòa | Kết thúc ván thắng, thua, hòa ở AI/2 người/online | Thắng: hợp âm đi lên + lấp lánh + mèo vui, confetti, ô thắng phát sáng; thua: chuỗi đi xuống + mèo buồn, mây mưa, bàn giảm màu nhẹ, không confetti; hòa: hai nốt êm + Zzz; mỗi ván chỉ phát một lần, F5/rejoin không phát lại |
 | 73 | Online góc nhìn & bỏ cuộc | Hai context độc lập chơi hết ván; F5 bên thua; đóng tab đối thủ | Mỗi bên nghe đúng thắng/thua của mình, hiệu ứng đúng một lần; F5 khi đã xong không phát lại; đóng tab quá 60 giây người ở lại thắng, không confetti |
 | 74 | Giảm chuyển động & thiếu Web Audio | Bật Giảm chuyển động rồi thua; chạy trình duyệt chặn Web Audio | Không mây mưa/confetti/đổi màu động nhưng vẫn có âm thua và chữ; thiếu Web Audio thì game vẫn chạy, không lỗi console |
+| 75 | Rung khi đến lượt | Trên Android Chrome (hoặc giả lập `navigator.vibrate`), chơi online hai máy; tắt công tắc rồi thử lại | Khi đối thủ đi xong và đến lượt mình, máy rung nhẹ 35 ms đúng một lần; tự đánh không rung; tắt công tắc thì không rung; tải lại vẫn giữ lựa chọn |
 
 Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -519,7 +523,7 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 | Gửi thư lỗi 401/403 | Sai App Password/SMTP key hoặc `MAIL_FROM` không khớp tài khoản | Kiểm tra `SMTP_USER`/`SMTP_PASS`; Gmail cần App Password; Brevo/Resend cần xác minh người gửi/domain |
 | Không nhận thư đặt lại | Email chưa xác thực hoặc bị rate limit | Xác thực email trước; thử lại sau 1 giờ; dùng `npm run admin:reset-password` nếu không có email |
 | Thư vào spam | Người gửi/domain chưa xác minh | Xác minh domain (SPF/DKIM) ở nhà cung cấp; dùng `MAIL_FROM` cùng domain |
-| Đang đăng nhập bỗng thành khách khi server ngủ | Bản cũ chưa có retry | Bản này giữ đăng nhập tới ~90 giây khi lỗi mạng; kiểm tra service worker đã nhận cache v10 |
+| Đang đăng nhập bỗng thành khách khi server ngủ | Bản cũ chưa có retry | Bản này giữ đăng nhập tới ~90 giây khi lỗi mạng; kiểm tra service worker đã nhận cache v12 |
 
 ---
 
