@@ -245,6 +245,37 @@ export function resetAllScores() {
 }
 
 // ---------------------------------------------------------------------------
+// Ma thiet bi (on dinh qua cac phien, dung cho thong bao day)
+// ---------------------------------------------------------------------------
+const DEVICE_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+
+function randomDeviceId() {
+  try {
+    if (globalThis.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      globalThis.crypto.getRandomValues(bytes);
+      let out = '';
+      for (const byte of bytes) out += byte.toString(16).padStart(2, '0');
+      return out;
+    }
+  } catch {
+    /* roi xuong Math.random */
+  }
+  let out = '';
+  for (let i = 0; i < 32; i += 1) out += Math.floor(Math.random() * 16).toString(16);
+  return out;
+}
+
+/** Ma thiet bi luu ben vung; tao moi neu chua co hoac hong. Khong phai dinh danh ca nhan. */
+export function getDeviceId() {
+  const saved = read(`${PREFIX}device`);
+  if (saved && DEVICE_ID_RE.test(saved)) return saved;
+  const created = randomDeviceId();
+  write(`${PREFIX}device`, created);
+  return created;
+}
+
+// ---------------------------------------------------------------------------
 // Phien online (de rejoin sau F5 / rot mang)
 // ---------------------------------------------------------------------------
 export function loadSession() {

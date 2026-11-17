@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { newId, query, transaction, isUniqueViolation } from './db.js';
+import { pushEnabled, pushPublicKey, unlinkPushForDevice } from './push.js';
+import { csrfJsonGuard } from './security.js';
 import {
   actionLink,
   emailChangeNoticeMail,
@@ -374,43 +376,7 @@ export function installAuth(app) {
   });
 
   // Chong CSRF: moi thay doi du lieu phai la JSON va Origin/Host cung origin.
-  router.use((req, res, next) => {
-    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
-      return next();
-    }
-    const type = String(req.get('content-type') || '').toLowerCase();
-    if (!type.startsWith('application/json')) {
-      return res.status(415).json({ ok: false, code: 'UNSUPPORTED_MEDIA_TYPE' });
-    }
-    const origin = req.get('origin');
-    if (!origin) {
-      return res.status(403).json({ ok: false, code: 'CSRF_REJECTED' });
-    }
-    let originHost = '';
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      originHost = '';
-    }
-    const allowed = new Set(
-      String(process.env.CORS_ORIGIN || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((item) => {
-          try {
-            return new URL(item).host;
-          } catch {
-            return '';
-          }
-        })
-        .filter(Boolean)
-    );
-    if (!originHost || (originHost !== req.get('host') && !allowed.has(originHost))) {
-      return res.status(403).json({ ok: false, code: 'CSRF_REJECTED' });
-    }
-    next();
-  });
+  router.use(csrfJsonGuard);
 
   const limiter = (max, windowMs, keyGenerator, message) =>
     rateLimit({
@@ -442,7 +408,12 @@ export function installAuth(app) {
   const changeEmailLimiter = limiter(5, 60 * 60 * 1000, (req) => req.user?.id || req.ip, 'email-change');
 
   router.get('/config', (_req, res) => {
-    res.json({ ok: true, mailEnabled });
+    res.json({
+      ok: true,
+      mailEnabled,
+      pushEnabled,
+      vapidPublicKey: pushEnabled ? pushPublicKey : null,
+    });
   });
 
   router.post('/auth/register', registerLimiter, async (req, res) => {
@@ -768,6 +739,9 @@ export function installAuth(app) {
       if (req.sessionToken) {
         await query('DELETE FROM sessions WHERE token_hash = ?', [sha256(req.sessionToken)]);
       }
+      // Thiet bi nay thoi gan voi tai khoan; thong bao luot van hoat dong o che
+      // do khach. Xoa tai khoan (DELETE /me) moi xoa han subscription.
+      if (req.user) await unlinkPushForDevice(req.user.id, req.body?.deviceId);
       clearSessionCookie(res);
       return res.json({ ok: true });
     } catch (error) {
@@ -970,6 +944,7 @@ export function installAuth(app) {
         await tx.query('DELETE FROM sessions WHERE user_id = ?', [req.user.id]);
         await tx.query('DELETE FROM email_verifications WHERE user_id = ?', [req.user.id]);
         await tx.query('DELETE FROM password_resets WHERE user_id = ?', [req.user.id]);
+        await tx.query('DELETE FROM push_subscriptions WHERE user_id = ?', [req.user.id]);
         await tx.query(
           `UPDATE users SET username = ?, display_name = ?, deleted_at = ?, password_hash = ?,
                             email = NULL, email_verified_at = NULL, pending_email = NULL

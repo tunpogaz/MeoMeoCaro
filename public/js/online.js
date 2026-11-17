@@ -85,6 +85,11 @@ export class OnlineClient {
     this.connectPromise = null;
   }
 
+  /** Ma thiet bi gui kem create/join/rejoin de server biet may nao can nhan push. */
+  get deviceId() {
+    return typeof this.handlers.deviceId === 'function' ? this.handlers.deviceId() : '';
+  }
+
   get connected() {
     return Boolean(this.socket?.connected);
   }
@@ -155,10 +160,12 @@ export class OnlineClient {
   }
 
   createRoom(profile, size) {
+    const deviceId = this.deviceId;
     return this.#emitAck('room:create', {
       name: profile?.name || '',
       avatar: profile?.avatar || 'orange',
       size,
+      ...(deviceId ? { deviceId } : {}),
     });
   }
 
@@ -167,15 +174,30 @@ export class OnlineClient {
   }
 
   joinRoom(roomId, profile) {
+    const deviceId = this.deviceId;
     return this.#emitAck('room:join', {
       roomId,
       name: profile?.name || '',
       avatar: profile?.avatar || 'orange',
+      ...(deviceId ? { deviceId } : {}),
     });
   }
 
   rejoin(roomId, playerKey) {
-    return this.#emitAck('room:rejoin', { roomId, playerKey });
+    const deviceId = this.deviceId;
+    return this.#emitAck('room:rejoin', {
+      roomId,
+      playerKey,
+      ...(deviceId ? { deviceId } : {}),
+    });
+  }
+
+  /** Bao server tab dang an/hien de quyet dinh co gui push hay khong. */
+  setPresence(roomId, visible) {
+    const socket = this.socket;
+    if (!socket?.connected || !roomId) return false;
+    socket.emit('presence:set', { roomId, visible: visible === true });
+    return true;
   }
 
   move(roomId, move) {

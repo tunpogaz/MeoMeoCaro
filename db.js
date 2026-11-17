@@ -102,6 +102,25 @@ const MIGRATIONS = [
       'CREATE INDEX idx_password_resets_expires ON password_resets (expires_at)',
     ],
   },
+  {
+    version: '003_push_subscriptions',
+    statements: [
+      `CREATE TABLE push_subscriptions (
+        id TEXT PRIMARY KEY,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        user_id TEXT NULL REFERENCES users(id) ON DELETE SET NULL,
+        lang TEXT NOT NULL,
+        created_at BIGINT NOT NULL,
+        last_success_at BIGINT NULL,
+        fail_count INTEGER NOT NULL DEFAULT 0
+      )`,
+      'CREATE INDEX idx_push_subscriptions_device ON push_subscriptions (device_id)',
+      'CREATE INDEX idx_push_subscriptions_user ON push_subscriptions (user_id)',
+    ],
+  },
 ];
 
 function splitSqlStatements(sql) {

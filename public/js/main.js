@@ -15,6 +15,7 @@ import {
   loadSession,
   saveSession,
   clearSession,
+  getDeviceId,
 } from './storage.js';
 import {
   catAvatar,
@@ -28,7 +29,22 @@ import {
 } from '../assets/cats.js';
 import * as audio from './audio.js';
 import { clampVolume, resultEffectKey, resultPerspective } from './audio-logic.js';
-import { vibrateTurn } from './haptics.js';
+import { vibrateTurn, iosTurnHaptic, iosSwitchSupported } from './haptics.js';
+import {
+  classifyPushState,
+  clearAppBadge,
+  createTitleBlinker,
+  detectPushEnvironment,
+  getExistingPushSubscription,
+  sendPushMeta,
+  setAppBadge,
+  shouldAlertTab,
+  subscribeToPush,
+  subscriptionEndpoint,
+  subscriptionToPayload,
+  unsubscribeFromPush,
+  PUSH_STATE_KEYS,
+} from './push.js';
 import {
   initBoard,
   setBoardSize,
@@ -183,7 +199,13 @@ const state = {
   scoreViewSize: 3,
   game: null,
   account: { user: null, loading: true },
-  config: { mailEnabled: false, loaded: false },
+  config: {
+    mailEnabled: false,
+    pushEnabled: false,
+    vapidPublicKey: null,
+    loaded: false,
+  },
+  push: { env: null, state: 'disabled', busy: false, subscribed: false },
   auth: { tab: 'login', avatar: 'orange', busy: false },
   forgot: { countdown: 0, timer: null, email: '' },
   reset: { token: '', countdown: 0, timer: null },
@@ -223,8 +245,11 @@ const state = {
     undoTick: null,
     undoCooldownTimer: null,
     undoDeclineTimer: null,
+    lastPresence: null,
   },
 };
+
+const DEVICE_ID = getDeviceId();
 
 let lobbyBusy = false;
 let lobbyStatusKind = '';
@@ -239,6 +264,15 @@ const net = new OnlineClient({
   onDisconnect: handleOnlineDisconnect,
   onConnectError: handleOnlineConnectError,
   onEvent: handleOnlineEvent,
+  deviceId: () => DEVICE_ID,
+});
+
+const titleBlinker = createTitleBlinker({
+  getTitle: () => document.title,
+  setTitle: (value) => {
+    document.title = value;
+  },
+  getText: () => t('tabTurnTitle'),
 });
 
 const aiClient = createAIClient();
@@ -622,12 +656,259 @@ async function refreshConfig() {
       onWait: () => setBanner(t('wakingServer'), 'info'),
     });
     state.config.mailEnabled = response?.mailEnabled === true;
+    state.config.pushEnabled = response?.pushEnabled === true;
+    state.config.vapidPublicKey =
+      typeof response?.vapidPublicKey === 'string' ? response.vapidPublicKey : null;
   } catch {
     state.config.mailEnabled = false;
+    state.config.pushEnabled = false;
+    state.config.vapidPublicKey = null;
   }
   state.config.loaded = true;
   applyMailVisibility();
+  refreshPushUi().catch(() => {});
   return state.config.mailEnabled;
+}
+
+// ---------------------------------------------------------------------------
+// Thong bao day (Cai dat)
+// ---------------------------------------------------------------------------
+function deviceKind(env) {
+  if (env?.ipad) return 'ipad';
+  if (env?.iphone) return 'iphone';
+  if (/Android/i.test(navigator.userAgent || '')) return 'android';
+  return 'desktop';
+}
+
+function renderPushDeviceNote(env) {
+  const note = $('push-device-note');
+  if (!note) return;
+  const kind = deviceKind(env);
+  const key =
+    kind === 'ipad'
+      ? 'pushDeviceIpad'
+      : kind === 'iphone'
+        ? 'pushDeviceIphone'
+        : kind === 'android'
+          ? 'pushDeviceAndroid'
+          : 'pushDeviceDesktop';
+  note.textContent = t(key);
+  note.hidden = false;
+}
+
+/** Sau khi dang nhap, gan lai subscription dang co (logout truoc do da bo lien ket). */
+async function relinkPushSubscription() {
+  if (state.config.pushEnabled !== true) return;
+  try {
+    const subscription = await getExistingPushSubscription(navigator);
+    if (!subscription) return;
+    const payload = subscriptionToPayload(subscription, {
+      deviceId: DEVICE_ID,
+      lang: state.settings.lang,
+    });
+    await api.pushSubscribe(payload);
+    await sendPushMeta(navigator, DEVICE_ID, state.settings.lang);
+  } catch {
+    /* khong chan luong dang nhap */
+  }
+}
+
+async function refreshPushUi() {
+  const block = $('push-block');
+  if (!block) return;
+  const serverEnabled = state.config.pushEnabled === true;
+  if (!serverEnabled) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const statusEl = $('push-status');
+  if (statusEl) statusEl.textContent = t('pushChecking');
+
+  const env = detectPushEnvironment();
+  state.push.env = env;
+  const subscribed =
+    env.secure && env.supported ? Boolean(await getExistingPushSubscription()) : false;
+  state.push.subscribed = subscribed;
+
+  const kind = classifyPushState({ ...env, subscribed }, { serverEnabled });
+  state.push.state = kind;
+
+  const status = $('push-status');
+  if (status) {
+    status.textContent = t(PUSH_STATE_KEYS[kind] || 'pushOff');
+    status.dataset.state = kind;
+  }
+
+  const hint = $('push-hint');
+  const hints = [];
+  if (kind === 'ios-install') hints.push(t('pushIosInstall'), t('pushIosVersion'));
+  else if (kind === 'permission-denied') hints.push(t('pushPermissionDenied'));
+  else if (kind === 'ready') hints.push(t('pushPermissionExplain'));
+  if (hint) {
+    hint.textContent = hints.join('\n');
+    hint.hidden = hints.length === 0;
+  }
+
+  $('push-enable').hidden = kind !== 'ready';
+  $('push-disable').hidden = kind !== 'subscribed';
+  $('push-test').hidden = kind !== 'subscribed';
+  renderPushDeviceNote(env);
+}
+
+async function enablePushNotifications() {
+  if (state.push.busy) return;
+  const env = state.push.env || detectPushEnvironment();
+  if (!env.secure) {
+    toast(t('pushNeedsHttps'), 'error', 3400);
+    return;
+  }
+  if (env.ios && !env.standalone) {
+    toast(t('pushIosInstall'), 'error', 4600);
+    return;
+  }
+  if (!env.supported || !state.config.vapidPublicKey) {
+    toast(t('pushUnsupported'), 'error', 3400);
+    return;
+  }
+
+  const button = $('push-enable');
+  state.push.busy = true;
+  if (button) button.disabled = true;
+  try {
+    // Lenh xin quyen phai nam trong cu cham nay (iOS chi cho phep nhu vay).
+    const subscription = await subscribeToPush({
+      nav: navigator,
+      win: window,
+      vapidPublicKey: state.config.vapidPublicKey,
+    });
+    const payload = subscriptionToPayload(subscription, {
+      deviceId: DEVICE_ID,
+      lang: state.settings.lang,
+    });
+    if (
+      !payload.subscription.endpoint ||
+      !payload.subscription.keys.p256dh ||
+      !payload.subscription.keys.auth
+    ) {
+      throw new Error('invalid-subscription');
+    }
+    await api.pushSubscribe(payload);
+    await sendPushMeta(navigator, DEVICE_ID, state.settings.lang);
+    state.push.subscribed = true;
+    toast(t('pushEnabledToast'), 'success', 2400);
+  } catch (error) {
+    if (error?.message === 'permission-denied' || error?.code === 'permission-denied') {
+      toast(t('pushDeniedToast'), 'error', 3200);
+    } else {
+      toast(t('pushSubscribeFailed'), 'error', 3400);
+    }
+  } finally {
+    state.push.busy = false;
+    if (button) button.disabled = false;
+    await refreshPushUi();
+  }
+}
+
+async function disablePushNotifications() {
+  if (state.push.busy) return;
+  state.push.busy = true;
+  try {
+    const subscription = await unsubscribeFromPush(navigator);
+    const endpoint = subscriptionEndpoint(subscription);
+    try {
+      await api.pushUnsubscribe({ deviceId: DEVICE_ID, ...(endpoint ? { endpoint } : {}) });
+    } catch {
+      /* server se tu don dep khi gui that bai */
+    }
+    state.push.subscribed = false;
+    toast(t('pushDisabledToast'), 'info', 2400);
+  } finally {
+    state.push.busy = false;
+    await refreshPushUi();
+  }
+}
+
+async function sendPushTest() {
+  const button = $('push-test');
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    await api.pushTest(DEVICE_ID);
+    toast(t('pushTestScheduled'), 'info', 3200);
+  } catch (error) {
+    toast(
+      error?.code === 'RATE_LIMITED' ? t('rateLimit') : t('pushTestFailed'),
+      'error',
+      3400
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function updateHapticsNote() {
+  const note = $('haptics-note');
+  if (!note) return;
+  const env = detectPushEnvironment();
+  if (env.ipad) note.textContent = t('hapticsIpadNote');
+  else if (env.iphone) note.textContent = t('hapticsIosNote');
+  else note.textContent = t('hapticsTestDesc');
+}
+
+function testHaptics() {
+  // Ca hai deu chay dong bo trong cu cham nay; khong hua iPhone rung khi co mang.
+  const buzzed = vibrateTurn({ enabled: true, visible: true });
+  if (!buzzed && iosSwitchSupported()) iosTurnHaptic({ enabled: true });
+  toast(t('hapticsTestDone'), 'info', 1800);
+}
+
+// ---------------------------------------------------------------------------
+// Nhac den luot: title nhay + badge + presence
+// ---------------------------------------------------------------------------
+function updateTurnAlert() {
+  const room = state.online.roomState;
+  const playing = room?.status === 'playing' && !state.online.finishReason;
+  const myTurn = playing && room.turn === state.online.youSymbol;
+  const alert =
+    state.mode === 'online' &&
+    Boolean(state.online.roomId) &&
+    shouldAlertTab({ hidden: document.hidden, myTurn, playing });
+
+  if (alert) {
+    if (!titleBlinker.active) titleBlinker.start();
+    setAppBadge(navigator);
+  } else {
+    titleBlinker.stop();
+    clearAppBadge(navigator);
+  }
+}
+
+function sendPresence(force = false) {
+  if (!state.online.roomId || !net.connected) return;
+  const visible = !document.hidden;
+  if (!force && state.online.lastPresence === visible) return;
+  state.online.lastPresence = visible;
+  net.setPresence(state.online.roomId, visible);
+}
+
+function sendPresenceHidden() {
+  if (!state.online.roomId || !net.connected) return;
+  state.online.lastPresence = false;
+  net.setPresence(state.online.roomId, false);
+}
+
+function setupPresenceWatchers() {
+  const sync = () => {
+    sendPresence(true);
+    updateTurnAlert();
+  };
+  document.addEventListener('visibilitychange', sync);
+  window.addEventListener('pageshow', sync);
+  window.addEventListener('focus', sync);
+  window.addEventListener('blur', sendPresenceHidden);
+  window.addEventListener('pagehide', sendPresenceHidden);
+  document.addEventListener('freeze', sendPresenceHidden);
 }
 
 function handleAuthSuccess(user, options = {}) {
@@ -636,6 +917,7 @@ function handleAuthSuccess(user, options = {}) {
   renderAccountUI();
   audio.play('join');
   toast(t('welcomeUser', { name: user.displayName }), 'success', 2200);
+  relinkPushSubscription();
   if (options.mailSent) {
     window.setTimeout(() => {
       toast(t('verifyMailSent'), 'info', 6000);
@@ -652,7 +934,7 @@ function handleAuthSuccess(user, options = {}) {
 
 async function logoutAccount() {
   try {
-    await api.logout();
+    await api.logout(DEVICE_ID);
   } catch {
     /* van xoa trang thai tai khoan o client */
   }
@@ -1181,6 +1463,8 @@ async function deleteAccountFlow() {
   $('delete-account').disabled = true;
   try {
     await api.deleteAccount({ password: $('delete-password').value });
+    // Server da xoa ban ghi push trong cung transaction; bo luon subscription tren may.
+    await unsubscribeFromPush(navigator).catch(() => null);
     state.account.user = null;
     state.stats = null;
     state.history = { items: [], page: 0, hasMore: false, loading: false, size: '', result: '' };
@@ -2832,6 +3116,8 @@ function handleJoinSuccess(response) {
   audio.play('join');
 
   if (response.state) applyOnlineState(response.state, { initial: true });
+  sendPresence(true);
+  updateTurnAlert();
 }
 
 function applyOnlineState(next, options = {}) {
@@ -2870,7 +3156,9 @@ function applyOnlineState(next, options = {}) {
     !document.hidden
   ) {
     audio.play('turn');
-    vibrateTurn({ enabled: state.settings.haptics !== false });
+    const buzzed = vibrateTurn({ enabled: state.settings.haptics !== false });
+    // Thu nghiem iOS: chi la no luc, khong bao dam; iPad khong co dong co rung.
+    if (!buzzed) iosTurnHaptic({ enabled: state.settings.haptics !== false });
   }
 
   if (next.status === 'waiting') {
@@ -2900,6 +3188,7 @@ function applyOnlineState(next, options = {}) {
     });
   }
   state.online.lastBoardCount = filled;
+  updateTurnAlert();
 }
 
 function showWaitingRoom(next, options = {}) {
@@ -3695,6 +3984,7 @@ function handleGameOver(payload) {
   }
 
   syncOnlineView();
+  updateTurnAlert();
 
   if (!firstTime) return;
   showResultVisual(perspective, next.winLine);
@@ -3779,6 +4069,8 @@ function handleOnlineConnect() {
       audio.play('join');
       toast(t('connectedToast'), 'success', 1800);
       applyOnlineState(response.state);
+      sendPresence(true);
+      updateTurnAlert();
     })
     .catch(() => {
       setBanner(t('connLost'), 'error');
@@ -3837,8 +4129,11 @@ function endOnlineSession({ clearSaved = true } = {}) {
   state.online.finishReason = null;
   state.online.celebratedKey = null;
   state.online.lastBoardCount = null;
+  state.online.lastPresence = null;
   state.online.rematchPending = false;
   state.online.rematchToastShown = false;
+  titleBlinker.stop();
+  clearAppBadge(navigator);
   resetOnlineUndoState();
   stopOnlineTimer();
   stopInfiniteSession();
@@ -3982,6 +4277,8 @@ async function tryResumeSession() {
     setLoading(false);
     setBanner('');
     applyOnlineState(response.state, { initial: true });
+    sendPresence(true);
+    updateTurnAlert();
     return true;
   } catch {
     setLoading(false);
@@ -4068,6 +4365,7 @@ function populateSettings() {
   syncVolumeControls();
   audio.setVolumes(volumePayload());
   updateSoundButton();
+  updateHapticsNote();
 }
 
 function applyLanguage(lang) {
@@ -4092,6 +4390,8 @@ function applyLanguage(lang) {
   renderProfileEmail();
   updatePasswordStrength();
   updateResetStrength();
+  updateHapticsNote();
+  refreshPushUi().catch(() => {});
   if (state.account.user) renderAccountUI();
   else syncNameInput();
 
@@ -4428,6 +4728,7 @@ function setupHomeEvents() {
 
   $('btn-settings').addEventListener('click', () => {
     populateSettings();
+    refreshPushUi().catch(() => {});
     openDialog('dialog-settings');
   });
   $('btn-howto').addEventListener('click', () => openDialog('dialog-howto'));
@@ -4600,8 +4901,18 @@ function setupDialogs() {
     state.settings.haptics = event.target.checked;
     saveSettings(state.settings);
     // Cu chi nay la thao tac nguoi dung, tien de thu rung ngay tren may.
-    if (state.settings.haptics) vibrateTurn();
+    if (state.settings.haptics) vibrateTurn({ enabled: true, visible: true });
   });
+
+  const hapticsTest = $('haptics-test');
+  if (hapticsTest) hapticsTest.addEventListener('click', testHaptics);
+
+  const pushEnable = $('push-enable');
+  if (pushEnable) pushEnable.addEventListener('click', enablePushNotifications);
+  const pushDisable = $('push-disable');
+  if (pushDisable) pushDisable.addEventListener('click', disablePushNotifications);
+  const pushTest = $('push-test');
+  if (pushTest) pushTest.addEventListener('click', sendPushTest);
 
   $('set-lang').addEventListener('change', (event) => {
     applyLanguage(event.target.value);
@@ -4664,6 +4975,25 @@ function registerServiceWorker() {
   if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+/** Mo dung phong khi nguoi dung bam vao thong bao day. */
+function setupServiceWorkerMessages() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.type !== 'mmc:open-room') return;
+    const code = normalizeRoomCode(data.roomId);
+    if (code.length !== 5) return;
+    if (state.online.roomId === code) return;
+    if (state.online.roomId) leaveOnlineRoom();
+    if (!state.account.user) {
+      state.pendingRoom = code;
+      openAuth('login');
+      return;
+    }
+    openInviteRoom(code);
   });
 }
 
@@ -4771,7 +5101,9 @@ function init() {
   setupDialogs();
   setupAudioUnlock();
   setupNetworkWatchers();
+  setupPresenceWatchers();
   registerServiceWorker();
+  setupServiceWorkerMessages();
 
   Promise.all([refreshAccount(), refreshConfig()]).finally(routeInitial);
 }

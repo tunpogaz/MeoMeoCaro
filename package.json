@@ -9,7 +9,8 @@
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
     "admin:reset-password": "node scripts/admin-reset-password.js",
-    "test": "node test/ai.test.mjs && node test/wake.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs && node test/password-reset.test.mjs && node test/audio.test.mjs && node test/haptics.test.mjs",
+    "vapid:generate": "node scripts/vapid-generate.js",
+    "test": "node test/ai.test.mjs && node test/wake.test.mjs && node test/server.test.mjs && node test/auth.test.mjs && node test/history.test.mjs && node test/password-reset.test.mjs && node test/audio.test.mjs && node test/haptics.test.mjs && node test/push-client.test.mjs && node test/sw.test.mjs && node test/push.test.mjs",
     "test:ai": "node test/ai.test.mjs",
     "test:wake": "node test/wake.test.mjs",
     "test:server": "node test/server.test.mjs",
@@ -17,7 +18,10 @@
     "test:history": "node test/history.test.mjs",
     "test:password-reset": "node test/password-reset.test.mjs",
     "test:audio": "node test/audio.test.mjs",
-    "test:haptics": "node test/haptics.test.mjs"
+    "test:haptics": "node test/haptics.test.mjs",
+    "test:push-client": "node test/push-client.test.mjs",
+    "test:sw": "node test/sw.test.mjs",
+    "test:push": "node test/push.test.mjs"
   },
   "engines": {
     "node": ">=22.13"
@@ -37,7 +41,8 @@
     "helmet": "^7.1.0",
     "nodemailer": "^6.10.1",
     "pg": "^8.23.1",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "socket.io-client": "^4.7.5"

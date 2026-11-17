@@ -16,6 +16,14 @@ import { installAuth, userFromCookieHeader } from './auth.js';
 import { installHistory, saveMatchRecord } from './history.js';
 import { installTestMailRoutes, mailEnabled, mailProvider, mailStartupWarning } from './mailer.js';
 import {
+  cleanupPushSubscriptions,
+  installPush,
+  isValidDeviceId,
+  pushProvider,
+  pushStartupWarning,
+  sendPushToDevice,
+} from './push.js';
+import {
   DEFAULT_BOARD_SIZE,
   INFINITE,
   cellKey,
@@ -119,6 +127,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api', express.json({ limit: '10kb' }));
 installAuth(app);
+installPush(app);
 installHistory(app);
 installTestMailRoutes(app);
 
@@ -162,6 +171,12 @@ const RATE_LIMIT = 10; // toi da 10 su kien / giay / socket
 const EMOTE_COOLDOWN = 2000;
 const MAX_NAME = 12;
 const MAX_PLAYERS = 2;
+// Mot nguoi choi chi nhan toi da mot thong bao day moi 20 giay trong cung phong.
+const PUSH_MIN_INTERVAL_MS =
+  Number(process.env.PUSH_MIN_INTERVAL_MS) > 0 ? Number(process.env.PUSH_MIN_INTERVAL_MS) : 20_000;
+// Cho tab kip bao "da an" truoc khi gui push.
+const PUSH_GRACE_MS =
+  Number(process.env.PUSH_GRACE_MS) >= 0 ? Number(process.env.PUSH_GRACE_MS) : 1500;
 
 const EMOTES = new Set(['😺', '😹', '😿', '🐟', '🧶', '👏']);
 const AVATARS = new Set(['orange', 'gray', 'calico', 'black', 'cream', 'tabby']);
@@ -262,7 +277,7 @@ function createRoom(id, size = DEFAULT_BOARD_SIZE) {
   };
 }
 
-function createPlayer(socket, name, avatar, symbol) {
+function createPlayer(socket, name, avatar, symbol, deviceId = '') {
   return {
     socketId: socket.id,
     playerKey: crypto.randomUUID(),
@@ -271,8 +286,53 @@ function createPlayer(socket, name, avatar, symbol) {
     avatar,
     symbol,
     connected: true,
+    visible: true,
+    deviceId: isValidDeviceId(deviceId) ? deviceId : '',
     lastEmote: 0,
+    lastPushAt: 0,
   };
+}
+
+/** Thiet bi do client tu sinh; khong bat buoc voi client cu. */
+function deviceIdFrom(payload) {
+  return isValidDeviceId(payload?.deviceId) ? payload.deviceId : '';
+}
+
+/**
+ * Chi gui khi nguoi nhan khong hien tab / dang mat ket noi, co subscription,
+ * va chua nhan thong bao nao trong 20 giay gan day.
+ */
+function shouldPushTo(player) {
+  if (!player?.deviceId) return false;
+  if (player.connected && player.visible) return false;
+  const now = Date.now();
+  if (now - (player.lastPushAt || 0) < PUSH_MIN_INTERVAL_MS) return false;
+  player.lastPushAt = now;
+  return true;
+}
+
+/** Nhac "den luot ban" sau khi doi thu danh hoac server tu danh. */
+function notifyTurn(room) {
+  if (room.status !== 'playing' || room.undo?.pending) return;
+  const target = room.players.find((player) => player.symbol === room.turn);
+  if (!target || !target.deviceId) return;
+
+  // Cho mot khoang an toan de tab kip bao "da an"; neu nguoi choi quay lai
+  // hoac van dang hien tab thi khong gui thong bao.
+  const timer = setTimeout(() => {
+    if (room.status !== 'playing' || room.undo?.pending) return;
+    if (room.turn !== target.symbol) return;
+    if (!room.players.includes(target)) return;
+    if (!shouldPushTo(target)) return;
+    void sendPushToDevice(target.deviceId, 'turn', room.id);
+  }, PUSH_GRACE_MS);
+  timer.unref?.();
+}
+
+/** Bao chu phong dang cho rang doi thu da vao. */
+function notifyJoin(room, host) {
+  if (!shouldPushTo(host)) return;
+  void sendPushToDevice(host.deviceId, 'join', room.id);
 }
 
 /** Ten/avatar cua nguoi da dang nhap luon lay tu DB, khong tin client. */
@@ -613,6 +673,7 @@ function applyMove(room, index, symbol) {
   room.turn = symbol === 'A' ? 'B' : 'A';
   room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
   sendState(room);
+  notifyTurn(room);
   return { winner: null, line: null, draw: false };
 }
 
@@ -637,6 +698,7 @@ function applyInfiniteMove(room, x, y, symbol) {
   room.turn = symbol === 'A' ? 'B' : 'A';
   room.turnDeadline = bothConnected(room) ? Date.now() + turnMsFor(room.size) : null;
   sendState(room);
+  notifyTurn(room);
   return { winner: null, line: null, draw: false };
 }
 
@@ -663,6 +725,7 @@ function destroyRoom(room, reason) {
 /** Danh dau mot nguoi choi mat ket noi va bat dau dem gio giu cho. */
 function markDisconnected(room, player) {
   player.connected = false;
+  player.visible = false;
   abortUndo(room, { result: 'aborted' });
   room.turnDeadline = null; // tam dung dong ho luot
   touch(room);
@@ -734,7 +797,7 @@ io.on('connection', (socket) => {
 
     const { name, avatar } = identityFor(socket, payload);
     const room = createRoom(uniqueRoomId(), size);
-    const player = createPlayer(socket, name, avatar, 'A');
+    const player = createPlayer(socket, name, avatar, 'A', deviceIdFrom(payload));
     room.players.push(player);
     rooms.set(room.id, room);
 
@@ -805,7 +868,7 @@ io.on('connection', (socket) => {
     }
 
     const { name, avatar } = identityFor(socket, payload);
-    const player = createPlayer(socket, name, avatar, 'B');
+    const player = createPlayer(socket, name, avatar, 'B', deviceIdFrom(payload));
     room.players.push(player);
 
     // Nguoi di truoc van ngau nhien cho van dau
@@ -827,6 +890,8 @@ io.on('connection', (socket) => {
     }
     sendState(room);
     io.to(room.id).emit('game:restart', { starter: first });
+    const host = room.players.find((p) => p.symbol === 'A');
+    if (host) notifyJoin(room, host);
   });
 
   // --- Ket noi lai (F5 / rot mang / tab moi thay tab cu) -----------------
@@ -858,6 +923,9 @@ io.on('connection', (socket) => {
     }
 
     player.connected = true;
+    player.visible = true;
+    const rejoinedDeviceId = deviceIdFrom(payload);
+    if (rejoinedDeviceId) player.deviceId = rejoinedDeviceId;
     clearTimeout(room.timers.grace);
     room.timers.grace = null;
     touch(room);
@@ -883,6 +951,22 @@ io.on('connection', (socket) => {
     }
     sendState(room);
     socket.to(room.id).emit('room:opponent-reconnected', { name: player.name });
+  });
+
+  // --- Trang thai hien tab: chi de quyet dinh co gui thong bao day ------
+  socket.on('presence:set', (payload, ack) => {
+    if (!allowEvent(socket)) return replyError(ack, 'rateLimit', 'Cham thoi meo oi!');
+    const ctx = getRoomContext(socket);
+    if (!ctx) return replyError(ack, 'notInRoom', 'Ban khong o trong phong nay.');
+    const { room, player } = ctx;
+    if (!payloadRoomMatches(room, payload)) {
+      return replyError(ack, 'STALE_STATE', 'Ban co da thay doi, thu lai nhe.');
+    }
+    if (typeof payload?.visible !== 'boolean') {
+      return replyError(ack, 'INVALID_PRESENCE', 'Trang thai hien thi khong hop le.');
+    }
+    player.visible = payload.visible;
+    if (typeof ack === 'function') ack({ ok: true });
   });
 
   // --- Danh co -----------------------------------------------------------
@@ -1230,6 +1314,8 @@ log(`database: ${databaseKind()}`);
 log(`mail: ${mailEnabled ? mailProvider : 'disabled'}`);
 const mailWarning = mailStartupWarning();
 if (mailWarning) log(`mail warning: ${mailWarning}`);
+const pushWarning = pushStartupWarning();
+log(pushWarning ? `push warning: ${pushWarning}` : `push: ${pushProvider}`);
 
 setInterval(async () => {
   try {
@@ -1244,6 +1330,8 @@ setInterval(async () => {
       'DELETE FROM email_verifications WHERE expires_at < ? OR (used_at IS NOT NULL AND used_at < ?)',
       [now, cutoff]
     );
+    const removed = await cleanupPushSubscriptions();
+    if (removed) log('cleaned push subscriptions', removed);
   } catch (error) {
     console.error('[mmc] session/token cleanup failed', error.message);
   }

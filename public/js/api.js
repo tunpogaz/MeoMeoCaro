@@ -53,7 +53,7 @@ export const api = {
   me: () => request('/api/auth/me'),
   register: (payload) => request('/api/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
-  logout: () => request('/api/auth/logout', { method: 'POST', body: {} }),
+  logout: (deviceId) => request('/api/auth/logout', { method: 'POST', body: { deviceId } }),
   forgotPassword: (payload) =>
     request('/api/auth/forgot-password', { method: 'POST', body: payload }),
   resetCheck: (payload) =>
@@ -77,4 +77,8 @@ export const api = {
   },
   match: (id) => request(`/api/history/${encodeURIComponent(id)}`),
   stats: () => request('/api/stats'),
+  pushSubscribe: (payload) => request('/api/push/subscribe', { method: 'POST', body: payload }),
+  pushUnsubscribe: (payload) =>
+    request('/api/push/unsubscribe', { method: 'POST', body: payload }),
+  pushTest: (deviceId) => request('/api/push/test', { method: 'POST', body: { deviceId } }),
 };

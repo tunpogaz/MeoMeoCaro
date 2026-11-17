@@ -331,7 +331,49 @@ export const STRINGS = {
     reduceMotionDesc: 'Tắt hiệu ứng nhảy nhót cho dễ chịu hơn.',
     haptics: 'Rung khi đến lượt',
     hapticsDesc: 'Rung nhẹ khi đối thủ đi xong và đến lượt bạn (điện thoại hỗ trợ).',
+    hapticsTest: 'Thử rung',
+    hapticsTestDesc:
+      'Android: rung 35 ms. iPhone: thử nghiệm, chỉ trong thao tác chạm. iPad không có động cơ rung.',
+    hapticsTestButton: 'Rung thử',
+    hapticsTestDone: 'Đã thử rung (nếu máy hỗ trợ).',
+    hapticsIpadNote: 'iPad không có động cơ rung — bạn sẽ nghe âm thanh và thấy thông báo thay thế.',
+    hapticsIosNote:
+      'iPhone: trang web chưa thể tự rung khi có thông báo mạng. Âm thanh vẫn hoạt động; thông báo đẩy do hệ điều hành quyết định kiểu rung.',
     language: 'Ngôn ngữ',
+
+    pushSection: 'Thông báo đẩy và nhắc đến lượt',
+    pushChecking: 'Đang kiểm tra…',
+    pushOff: 'Chưa bật thông báo đẩy trên máy này.',
+    pushOn: 'Đã bật thông báo đẩy trên máy này.',
+    pushEnable: 'Bật thông báo',
+    pushDisable: 'Tắt thông báo',
+    pushTest: 'Gửi thử',
+    pushUnsupported: 'Trình duyệt này không hỗ trợ thông báo đẩy.',
+    pushNeedsHttps: 'Thông báo đẩy cần trang HTTPS (hoặc localhost).',
+    pushBlockedStatus: 'Thông báo đang bị chặn.',
+    pushIosStatus: 'Cần thêm app vào Màn hình chính.',
+    pushIosInstall:
+      'Trên iPhone/iPad: mở bằng Safari, chạm nút Chia sẻ → “Thêm vào Màn hình chính”, rồi mở app từ biểu tượng vừa thêm.',
+    pushIosVersion:
+      'Cần iOS/iPadOS 16.4 trở lên. Trên bản cũ, app chỉ nhắc bằng âm thanh khi tab đang mở.',
+    pushPermissionDenied:
+      'Trình duyệt đã chặn thông báo. Mở cài đặt trình duyệt để cho phép lại rồi thử tiếp.',
+    pushPermissionExplain:
+      'Mèo sẽ gửi một thông báo khi đối thủ đi xong và đến lượt bạn, kể cả khi app đang ẩn. Bật ngay bây giờ?',
+    pushEnabledToast: 'Đã bật thông báo đẩy!',
+    pushDisabledToast: 'Đã tắt thông báo đẩy trên máy này.',
+    pushTestScheduled: 'Đã hẹn gửi thông báo thử sau vài giây. Bạn có thể ẩn app để xem.',
+    pushTestFailed: 'Chưa gửi được thông báo thử. Kiểm tra quyền thông báo và thử lại.',
+    pushDeniedToast: 'Bạn chưa cho phép thông báo.',
+    pushSubscribeFailed: 'Không đăng ký được thông báo đẩy.',
+    pushDeviceIphone:
+      'iPhone: thông báo đẩy cần cài app vào Màn hình chính (iOS 16.4+). Kiểu rung do hệ điều hành quyết định.',
+    pushDeviceIpad:
+      'iPad không có động cơ rung. Khi đến lượt, bạn sẽ nghe âm thanh và thấy thông báo.',
+    pushDeviceAndroid:
+      'Android: thông báo đẩy kèm rung theo cài đặt hệ thống. Trong tab đang mở, máy rung 35 ms.',
+    pushDeviceDesktop: 'Máy tính: thông báo hiện ở góc màn hình; không có rung.',
+    tabTurnTitle: '● Đến lượt bạn',
 
     loading: 'Đang gọi mèo…',
     connLost: 'Mất kết nối, đang thử lại…',
@@ -411,6 +453,13 @@ export const STRINGS = {
       'Đi lại: với máy, bấm nút ↺ để lùi nước của bạn (và nước máy vừa đáp). Khi chơi online, bấm “Xin đi lại”; đối thủ có 15 giây để đồng ý hoặc từ chối. Mỗi ván được xin tối đa 3 lần.',
     rule10:
       'Âm thanh và nhạc nền được tổng hợp ngay trong trình duyệt. Mở Cài đặt để chỉnh âm lượng hoặc nghe thử; lần chạm đầu tiên mới bật được âm thanh.',
+    ruleTurnTitle: 'Nhắc khi đến lượt',
+    rule11:
+      'Khi tab đang mở, app phát âm thanh và rung nhẹ (điện thoại hỗ trợ). Khi tab bị ẩn, tiêu đề tab nhấp nháy “Đến lượt bạn”.',
+    rule12:
+      'Muốn nhận thông báo khi app đã đóng hoặc khóa máy, hãy bật thông báo đẩy trong Cài đặt. Trên iPhone/iPad cần thêm app vào Màn hình chính và dùng iOS 16.4 trở lên.',
+    rule13:
+      'iPad không có động cơ rung; thông báo đẩy trên iPhone do hệ điều hành quyết định kiểu rung. Có nút “Gửi thử” trong Cài đặt để kiểm tra.',
   },
 
   en: {
@@ -741,7 +790,48 @@ export const STRINGS = {
     reduceMotionDesc: 'Turn off bouncy animations.',
     haptics: 'Vibrate on your turn',
     hapticsDesc: 'A light buzz when the opponent moves and it is your turn (supported phones).',
+    hapticsTest: 'Test vibration',
+    hapticsTestDesc:
+      'Android: 35 ms buzz. iPhone: experimental, only during a tap. iPad has no vibration motor.',
+    hapticsTestButton: 'Buzz now',
+    hapticsTestDone: 'Vibration attempted (if your device supports it).',
+    hapticsIpadNote: 'iPad has no vibration motor — you will hear sound and see a notification instead.',
+    hapticsIosNote:
+      'iPhone: a web page cannot vibrate itself on a network event. Sound still works; push notifications use the vibration style chosen by iOS.',
     language: 'Language',
+
+    pushSection: 'Push notifications and turn reminders',
+    pushChecking: 'Checking…',
+    pushOff: 'Push notifications are off on this device.',
+    pushOn: 'Push notifications are on for this device.',
+    pushEnable: 'Enable notifications',
+    pushDisable: 'Turn off notifications',
+    pushTest: 'Send a test',
+    pushUnsupported: 'This browser does not support push notifications.',
+    pushNeedsHttps: 'Push notifications need an HTTPS page (or localhost).',
+    pushBlockedStatus: 'Notifications are blocked.',
+    pushIosStatus: 'Add the app to the Home Screen first.',
+    pushIosInstall:
+      'On iPhone/iPad: open in Safari, tap Share → “Add to Home Screen”, then open the app from its new icon.',
+    pushIosVersion:
+      'Requires iOS/iPadOS 16.4 or newer. On older versions the app can only sound an alert while the tab is open.',
+    pushPermissionDenied:
+      'Notifications are blocked in the browser. Allow them in browser settings, then try again.',
+    pushPermissionExplain:
+      'Meo Meo Caro will send one notification when the opponent moves and it is your turn, even while the app is hidden. Enable it now?',
+    pushEnabledToast: 'Push notifications enabled!',
+    pushDisabledToast: 'Push notifications turned off on this device.',
+    pushTestScheduled: 'A test notification will arrive in a few seconds. You can hide the app to see it.',
+    pushTestFailed: 'Could not send the test notification. Check notification permission and try again.',
+    pushDeniedToast: 'You did not allow notifications.',
+    pushSubscribeFailed: 'Could not register for push notifications.',
+    pushDeviceIphone:
+      'iPhone: push requires adding the app to the Home Screen (iOS 16.4+). The vibration style is chosen by iOS.',
+    pushDeviceIpad: 'iPad has no vibration motor. When it is your turn you will hear sound and see a notification.',
+    pushDeviceAndroid:
+      'Android: push notifications vibrate according to system settings. In an open tab the phone buzzes for 35 ms.',
+    pushDeviceDesktop: 'Desktop: notifications appear in the corner; there is no vibration.',
+    tabTurnTitle: '● Your turn',
 
     loading: 'Calling the cats…',
     connLost: 'Connection lost, retrying…',
@@ -821,6 +911,13 @@ export const STRINGS = {
       'Undo: versus the computer, press the ↺ button to take back your move (and the computer reply). Online, press “Ask to undo”; your opponent has 15 seconds to allow or decline. Up to 3 requests per round.',
     rule10:
       'Sound and music are synthesized in your browser. Open Settings to adjust volume or try each sound; audio starts after your first tap.',
+    ruleTurnTitle: 'Turn reminders',
+    rule11:
+      'While the tab is open, the app plays a sound and gives a light buzz (supported phones). When the tab is hidden, its title blinks “Your turn”.',
+    rule12:
+      'To be notified when the app is closed or the phone is locked, enable push notifications in Settings. On iPhone/iPad you must add the app to the Home Screen and use iOS 16.4 or newer.',
+    rule13:
+      'iPad has no vibration motor; iPhone push vibration is controlled by iOS. Use the “Send a test” button in Settings to check.',
   },
 };
 

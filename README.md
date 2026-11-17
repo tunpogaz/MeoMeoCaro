@@ -20,7 +20,8 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Cỡ bàn | 3×3 và **∞ vô cực**. Luật thắng: 3 quân (3×3), 5 quân (∞); chuỗi dài hơn vẫn thắng. Bàn ∞ dùng toạ độ nguyên (có số âm), vùng chơi ban đầu 9×9 quanh (0,0), tự mở rộng 2 ô quanh quân xa nhất; khi đi lại, vùng có thể co về nhưng không nhỏ hơn khung 9×9 ban đầu; hòa khi chạm giới hạn kỹ thuật 2000 nước |
 | AI | Dễ: phần lớn ngẫu nhiên, thỉnh thoảng thắng/chặn ngay; Vừa: thắng → chặn → ưu tiên giữa, ~20% ngẫu nhiên; Khó: minimax đầy đủ trên 3×3 nên không thể thua. Bàn ∞ dùng danh sách ô gần quân, iterative deepening sâu 3–4 trong Web Worker (~800ms), trả nước hợp lệ kể cả khi hết thời gian |
 | Bàn cờ | Lưới 3×3 dựng động, quân là mặt mèo có biểu cảm thường/thắng/thua, đánh dấu nước vừa đi, đường thắng bằng sợi len nối đúng chuỗi thắng, confetti cá và dấu chân mèo. Bàn ∞ vẽ bằng Canvas có ảo hoá ô, kéo để di chuyển, cuộn/chụm để thu phóng, nút ± / về giữa / tới nước vừa đánh, mũi tên chỉ nước ngoài màn hình và hoạt ảnh mở rộng vùng |
-| Âm thanh & nhạc | Nhạc menu tự soạn 92 BPM (pentatonic trưởng, 8 ô nhịp, pad/pluck/bass/kick/hat/chuông mèo), tự dừng khi vào ván và trở lại khi về menu. Tiếng mèo cam/mèo xám khác cao độ, có biến thiên nhẹ; mèo của mình rõ hơn, mèo đối thủ nhỏ hơn và lệch tai. Thắng/thua/hòa có âm riêng theo góc nhìn từng người; đi lại, lêu lêu, lượt mới, biểu cảm, bấm nút đều có âm. Đến lượt mình trên điện thoại hỗ trợ thì máy rung nhẹ (35 ms, tắt được trong Cài đặt). Toàn bộ tổng hợp bằng Web Audio, không có file âm thanh ngoài |
+| Âm thanh & nhạc | Nhạc menu tự soạn 92 BPM (pentatonic trưởng, 8 ô nhịp, pad/pluck/bass/kick/hat/chuông mèo), tự dừng khi vào ván và trở lại khi về menu. Tiếng mèo cam/mèo xám khác cao độ, có biến thiên nhẹ; mèo của mình rõ hơn, mèo đối thủ nhỏ hơn và lệch tai. Thắng/thua/hòa có âm riêng theo góc nhìn từng người; đi lại, lêu lêu, lượt mới, biểu cảm, bấm nút đều có âm. Đến lượt mình trên Android/Chrome thì máy rung nhẹ (35 ms, tắt được trong Cài đặt); iPhone không có Vibration API và iPad không có động cơ rung. Toàn bộ tổng hợp bằng Web Audio, không có file âm thanh ngoài |
+| Nhắc “đến lượt bạn” | Bốn lớp không lặp phiền: (1) tab đang mở — tiếng báo lượt sẵn có, rung 35 ms trên Android; (2) tab ẩn nhưng còn sống — tiêu đề nhấp nháy “● Đến lượt bạn” mỗi 1,2 giây (tối đa 3 lần/giây) và huy hiệu app nếu trình duyệt hỗ trợ; (3) app nền/đã đóng/khoá máy — Web Push “Đến lượt bạn rồi! 😺”, bấm mở đúng phòng; (4) thử nghiệm iOS Safari 17.4+ bằng công tắc ẩn, chỉ trong thao tác chạm và không hứa rung khi mạng gửi lượt tới. Web Push chỉ chạy trên PWA đã cài ở iOS 16.4+, rung/âm do hệ điều hành quyết định |
 | Giao diện | Tiếng Việt mặc định, chuyển sang tiếng Anh; font Baloo 2 + Nunito; tông kem/hồng/cam/xanh, viền mực dày kiểu sticker; bàn co giãn vuông, không tràn ngang trên màn 320px; bàn ∞ dùng `touch-action: none` để chạm/kéo/chụm không cuộn trang, có nhãn toạ độ, tổng số nước và thông báo cho trình đọc màn hình |
 | Tài khoản | Đăng ký / đăng nhập / đăng xuất, ghi nhớ phiên, hồ sơ (tên hiển thị + avatar), đổi mật khẩu (thu hồi các phiên khác), xoá tài khoản mềm. Khi bật email: xác thực địa chỉ bằng link, quên/đặt lại mật khẩu bằng link dùng một lần, đổi email qua bước xác thực email mới, banner nhắc xác thực. Tên đăng nhập 3–20 ký tự `[a-zA-Z0-9_]`, không phân biệt hoa thường; mật khẩu 8–72 ký tự, chặn mật khẩu phổ biến và trùng tên đăng nhập; thanh độ mạnh mật khẩu; lỗi hiển thị theo mã đã dịch. Khách vẫn chơi AI / 2 người / online nhưng không lưu lịch sử |
 | Lịch sử & thống kê | Chỉ lưu ván online có ít nhất một tài khoản; mỗi ván lưu một lần (thắng, hoà, chạm giới hạn nước, mất kết nối, rời phòng), đấu lại tạo bản ghi mới. Danh sách có phân trang (≤50), lọc theo cỡ bàn và kết quả; chi tiết chỉ người trong ván xem được (người ngoài nhận 404). Thống kê thắng/hoà/thua và tỷ lệ thắng theo từng cỡ bàn. Đối thủ đã xoá tài khoản hiển thị là "Người chơi đã xóa" |
@@ -29,7 +30,7 @@ Toàn bộ hình mèo, quân cờ, icon và hiệu ứng là **SVG gốc vẽ ta
 | Cài đặt | Bật/tắt tổng âm thanh và nhạc nền; ba thanh âm lượng Tổng / Nhạc nền / Hiệu ứng (0–100, bước 5, mặc định 80/40/80, lưu ngay và tự chuyển giá trị cũ); nghe thử mèo cam, mèo xám, thắng, thua, hòa, lêu lêu và nhạc; giảm chuyển động; bật/tắt rung khi đến lượt; tên người chơi ≤12 ký tự; 6 avatar mèo; ghi nhớ cỡ bàn đã chọn |
 | Lưu trữ | localStorage: hồ sơ khách, cài đặt, bảng điểm **riêng theo từng cỡ bàn** (kể cả ∞) cho AI (3 độ khó) và 2 người; tự chuyển sang bộ nhớ tạm nếu trình duyệt chặn localStorage; dữ liệu 3×3 cũ được tự động chuyển sang mục 3×3. Tài khoản và lịch sử nằm ở database phía server |
 | Online | Mã phòng tránh ký tự dễ nhầm (`0 O 1 I L`), người tạo chọn cỡ bàn (3×3 hoặc ∞), đồng hồ 30 giây/lượt (∞: 45 giây), tự đánh nước hợp lệ khi hết giờ, kết nối lại trong 60 giây, thay tab cũ bằng tab mới, 6 biểu cảm với cooldown 2 giây, đấu lại giữ nguyên cỡ bàn khi cả hai đồng ý. Bàn ∞ gửi `game:move` bằng `{x, y}`, máy chủ kiểm tra toạ độ nguyên, vùng chơi, ô trống, lượt và giới hạn 2000 nước. Phiên Socket.IO lấy danh tính từ cookie tài khoản, không tin tên client gửi. **Đi lại:** chế độ với máy hoàn tác ngay; online gửi yêu cầu cho đối thủ (15 giây, tối đa 3 lần/ván, cooldown 10 giây sau khi bị từ chối/hết giờ) |
-| PWA | Manifest, icon 192/512, service worker cache app shell (gồm cả AI worker, module bàn ∞, `api.js` và `wake.js`, cache v12), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
+| PWA | Manifest, icon 192/512/180/maskable, service worker cache app shell 29 mục (gồm AI worker, module bàn ∞, `api.js`, `wake.js`, `haptics.js`, `push.js`, cache `v14`), không cache `/api/*`, `/socket.io/*` hay `/health`; cài lên màn hình chính, chơi AI khi mất mạng |
 | Bảo mật | Máy chủ là nguồn sự thật, tự suy ra luật thắng từ cỡ bàn; làm sạch tên/avatar; giới hạn 10 sự kiện/giây/socket; tối đa 1000 phòng; không gửi `playerKey` cho đối thủ. Mật khẩu băm bằng `crypto.scrypt` (salt 16 byte, N=2¹⁵, r=8, p=1, keylen 64) và so sánh `timingSafeEqual`; token phiên 32 byte ngẫu nhiên, DB chỉ lưu SHA-256; token đặt lại/xác thực email cũng 32 byte, chỉ lưu SHA-256 và dùng một lần; link email luôn dựng từ `PUBLIC_URL`, token chỉ nằm trong URL fragment; cookie `mmc_sid` httpOnly, SameSite=Lax, Secure khi production; CSRF yêu cầu JSON + Origin/Host khớp; rate limit đăng ký/đăng nhập/quên mật khẩu/đổi email; Helmet + CSP + `Referrer-Policy: no-referrer`; SQL tham số hoá; không trả `password_hash`, `token_hash`, email đầy đủ của người khác hay `user_id` của người khác |
 
 ---
@@ -56,16 +57,18 @@ meo-meo-caro/
 ├── auth.js                   # scrypt, phiên đăng nhập, API tài khoản, email/quên mật khẩu, CSRF
 ├── mailer.js                 # console/smtp/resend/test, mẫu thư VI/EN, link từ PUBLIC_URL
 ├── history.js                # lưu ván một lần, API lịch sử / chi tiết / thống kê
+├── push.js                   # Web Push/VAPID, allowlist endpoint, outbox test, dọn subscription
 ├── render.yaml               # blueprint Render: web service + PostgreSQL
 ├── .env.example              # mẫu biến môi trường (không chứa bí mật)
 ├── scripts/
 │   ├── migrate.js            # `npm run migrate`
+│   ├── vapid-generate.js     # `npm run vapid:generate` — tạo cặp khóa VAPID cho Web Push
 │   └── admin-reset-password.js # `npm run admin:reset-password -- <username>` (local)
 ├── README.md
 ├── public/
 │   ├── index.html            # các màn hình game, tài khoản, hồ sơ, lịch sử, thống kê, dialog
 │   ├── manifest.json         # PWA manifest
-│   ├── sw.js                 # service worker: app shell + offline AI (cache v12)
+│   ├── sw.js                 # service worker: app shell + offline AI + push (cache v14)
 │   ├── css/
 │   │   └── style.css         # giao diện bàn 3×3, tài khoản/lịch sử/replay, responsive
 │   ├── assets/
@@ -73,7 +76,9 @@ meo-meo-caro/
 │   ├── icons/
 │   │   ├── icon.svg
 │   │   ├── icon-192.png
-│   │   └── icon-512.png
+│   │   ├── icon-512.png
+│   │   ├── icon-180.png            # apple-touch-icon (iOS)
+│   │   └── icon-maskable-512.png   # icon maskable cho Android
 │   └── js/
 │       ├── main.js           # bộ điều khiển trung tâm (điều hướng, ván chơi, online,
 │       │                     # tài khoản, lịch sử, replay, lời mời)
@@ -87,7 +92,8 @@ meo-meo-caro/
 │       ├── online.js         # bọc Socket.IO phía client
 │       ├── ui.js             # render bàn 3×3, hiệu ứng, toast, timer, confetti
 │       ├── audio.js          # facade duy nhất: unlock, scene, âm lượng, nghe thử, log test
-│       ├── haptics.js        # rung nhẹ khi đến lượt, tự bỏ qua máy không hỗ trợ
+│       ├── haptics.js        # rung nhẹ khi đến lượt, thử nghiệm switch iOS, tự bỏ qua máy không hỗ trợ
+│       ├── push.js           # nhận diện thiết bị, trạng thái push, title blink, badge, đăng ký push
 │       ├── audio-engine.js   # một AudioContext, bus nhạc/SFX, reverb, giới hạn 16 voice
 │       ├── audio-logic.js    # logic thuần: góc nhìn kết quả, scene, buildBar, migrate cài đặt
 │       ├── sfx.js            # công thức tiếng mèo, thắng/thua/hòa, đi lại, lêu lêu, UI
@@ -102,7 +108,10 @@ meo-meo-caro/
     ├── wake.test.mjs         # giữ đăng nhập khi lỗi mạng, backoff, offline, 4xx
     ├── password-reset.test.mjs # email xác thực, quên/đặt lại mật khẩu, đổi email, rate limit
     ├── audio.test.mjs        # logic thuần, engine giả, SFX, nhạc, facade, migrate cài đặt
-    └── haptics.test.mjs      # rung đúng một lần, tắt/ẩn tab/không hỗ trợ/lỗi
+    ├── haptics.test.mjs      # rung đúng một lần, tắt/ẩn tab/không hỗ trợ/lỗi
+    ├── push-client.test.mjs  # nhận diện iPhone/iPad, trạng thái push, title blink, badge, khóa VAPID
+    ├── sw.test.mjs           # cache, fetch offline, push/notificationclick/pushsubscriptionchange
+    └── push.test.mjs         # SSRF, gửi theo điều kiện, hạn mức, dọn subscription, API /api/push/*
 ```
 
 ---
@@ -159,6 +168,12 @@ Sao chép `.env.example` thành `.env` nếu muốn cấu hình. **Không commit
 | `INFINITE_MAX_MOVES` | `2000` | Giới hạn kỹ thuật số nước của bàn ∞ trước khi hòa; chủ yếu dùng cho test |
 | `UNDO_TIMEOUT_MS` | `15000` | Thời gian đối thủ trả lời yêu cầu đi lại online |
 | `UNDO_COOLDOWN_MS` | `10000` | Thời gian chờ trước khi xin lại sau khi bị từ chối/hết giờ |
+| `PUSH_PROVIDER` | (trống) | Để trống dùng Web Push thật; `test` chỉ dùng trong test, ghi thông báo vào outbox nội bộ và không gửi mạng |
+| `VAPID_PUBLIC_KEY` | (trống) | Khóa công khai VAPID, tạo bằng `npm run vapid:generate`. Thiếu khóa ⇒ `pushEnabled:false`, UI push ẩn |
+| `VAPID_PRIVATE_KEY` | (trống) | **Bí mật**, chỉ đặt trên hosting, không commit/log |
+| `VAPID_SUBJECT` | `mailto:no-reply@meomeocaro.local` | Liên hệ của chủ app, phải là `mailto:` hoặc `https:`; nên đặt email thật khi triển khai |
+| `PUSH_GRACE_MS` | `1500` | Chờ ngắn sau nước đi để tránh gửi push khi người nhận vừa quay lại tab; chủ yếu dùng test |
+| `PUSH_MIN_INTERVAL_MS` | `20000` | Khoảng cách tối thiểu giữa hai push cho cùng phòng + người nhận; dùng test để rút ngắn |
 | `DISABLE_RATE_LIMIT` | (trống) | Chỉ dùng trong test (`1` để tắt rate limit) |
 
 `ROOM_TTL_MS`, `RECONNECT_GRACE_MS`, `TURN_MS`, `INFINITE_MAX_MOVES`, `UNDO_TIMEOUT_MS`, `UNDO_COOLDOWN_MS` và `DISABLE_RATE_LIMIT` chủ yếu dùng cho test; khi chạy thật không cần đặt.
@@ -349,7 +364,44 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 - Bản build phục vụ trên HTTPS (localhost cũng được) thì trình duyệt mới cho cài và cache.
 - Sau lần tải đầu, app shell được cache; chọn chế độ AI hoặc 2 người vẫn chơi được khi offline. Chế độ online và tài khoản cần server.
 - Service worker **không cache** `/api/*`, `/socket.io/*` hay `/health`, nên lịch sử và phiên đăng nhập luôn lấy dữ liệu mới.
-- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v12`) để người dùng nhận bản mới. Cache v12 đã gồm `api.js`, `wake.js`, `game-core.js`, toàn bộ module bàn ∞/AI, giao diện đi lại, 5 module âm thanh (`audio.js`, `audio-engine.js`, `audio-logic.js`, `sfx.js`, `music.js`) và `haptics.js`; không có tệp cũ bị xoá.
+- Khi sửa CSS/JS/ảnh, tăng `CACHE_NAME` trong `public/sw.js` (hiện tại `meo-meo-caro-v14`) để người dùng nhận bản mới. Cache v14 có **29 mục**: app shell, icon (kể cả 180×180 và maskable), toàn bộ module bàn ∞/AI, 5 module âm thanh, `haptics.js`, `push.js`, `wake.js`; không có tệp cũ bị xoá và không cache phản hồi API.
+- Cài đặt **Add to Home Screen** là điều kiện bắt buộc để nhận Web Push trên iPhone/iPad; trên Android chỉ cần cài PWA để thông báo ổn định hơn.
+
+### Nhắc “đến lượt bạn” và thông báo đẩy
+
+Bốn lớp bổ trợ nhau, chỉ lớp phù hợp với trạng thái app hoạt động nên không lặp phiền:
+
+| Lớp | Khi nào | Người chơi thấy gì |
+| --- | --- | --- |
+| 1. Tab đang mở | Đang nhìn thấy bàn cờ | Tiếng báo lượt sẵn có; Android/Chrome rung 35 ms nếu bật “Rung khi đến lượt” |
+| 2. Tab ẩn nhưng còn sống | Chuyển sang tab khác, app vẫn chạy | Tiêu đề nhấp nháy “● Đến lượt bạn” mỗi 1,2 giây (tối đa 3 lần/giây); huy hiệu số 1 nếu trình duyệt hỗ trợ Badging API |
+| 3. Nền / đã đóng / khoá máy | PWA hoặc tab không còn hiển thị | Web Push “Đến lượt bạn rồi! 😺”; bấm mở app và vào đúng phòng |
+| 4. Thử nghiệm iOS Safari 17.4+ | Người dùng chủ động bấm “Rung thử” | Công tắc ẩn `input type="checkbox" switch` có thể cho phản hồi rung; **không dùng cho push mạng** vì iOS chỉ cho phép haptic trong thao tác chạm |
+
+**Sự thật nền tảng — không hứa quá khả năng:**
+
+- **Android/Chrome:** có Vibration API, tab ẩn vẫn rung nếu hệ thống cho phép.
+- **iPhone Safari:** không có Vibration API. Web Push chỉ hoạt động từ **iOS 16.4** và **chỉ khi đã thêm vào Màn hình chính**. Rung/âm thanh của thông báo do iOS quyết định theo cài đặt hệ thống; app không điều khiển được.
+- **iPad:** **không có động cơ rung**. Chỉ có banner và âm báo; không bao giờ hứa “iPad sẽ rung”.
+- **Máy tính:** thông báo hệ thống ở góc màn hình; không rung.
+
+**Bật thông báo (một lần cho mỗi thiết bị):**
+
+1. Mở **Cài đặt** → mục **Thông báo đẩy và nhắc đến lượt**.
+2. Đọc trạng thái và gợi ý. Trên iPhone/iPad chưa cài PWA, app hướng dẫn Add to Home Screen thay vì hiện nút bật.
+3. Bấm **Bật thông báo** → trình duyệt hỏi quyền ngay trong cú chạm đó. Từ chối thì phải mở cài đặt hệ thống để cấp lại.
+4. Bấm **Gửi thông báo thử** để kiểm tra; server trả lời sau vài giây. Có thể ẩn app để xem banner.
+5. Khi đã bật, đăng nhập tài khoản sẽ tự liên kết thiết bị; đăng xuất chỉ bỏ liên kết và giữ đăng ký, xoá tài khoản xoá đăng ký trong cùng transaction.
+
+**Cấu hình Web Push thật:**
+
+```bash
+npm run vapid:generate   # in một cặp khóa; không commit khóa riêng
+```
+
+Đặt `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (ví dụ `mailto:ban@ten-mien.com`) trên hosting HTTPS. Thiếu khóa hoặc dùng `http://` không phải localhost ⇒ `GET /api/config` trả `pushEnabled:false`, mục push tự ẩn và server chỉ ghi **một** cảnh báo lúc khởi động. Với Render, thêm ba biến trong Environment và dùng đúng URL HTTPS công khai; không cần mở cổng riêng cho push.
+
+**Riêng tư và an toàn:** payload chỉ có tiêu đề, nội dung, loại, mã phòng và thời điểm — **không có tên người chơi**. Server chỉ nhận endpoint HTTPS thuộc `fcm.googleapis.com`, `*.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com`; từ chối IP nội bộ, localhost, userinfo và khóa sai kích thước. Endpoint/khóa thiết bị không bao giờ xuất hiện trong log, API công khai hay báo cáo. Gửi lượt chỉ khi người nhận đang ẩn tab hoặc mất kết nối, không phải người vừa đi, không có yêu cầu đi lại đang chờ, và tối đa một thông báo mỗi 20 giây cho cùng phòng + người nhận. Đăng ký cũ nhận 404/410 bị xoá ngay; lỗi khác tăng `fail_count` và bị dọn sau 5 lần, hoặc sau 60 ngày không gửi thành công.
 
 ### Âm thanh và nhạc nền
 
@@ -365,7 +417,7 @@ Với production thật, nên dùng PostgreSQL qua `DATABASE_URL`.
 ## Kiểm thử tự động
 
 ```bash
-npm test                  # 157 test: ai + wake + server + auth + history + password-reset + audio + haptics
+npm test                  # 208 test: ai + wake + server + auth + history + password-reset + audio + haptics + push
 npm run test:ai           # 37 test
 npm run test:wake         # 8 test
 npm run test:server       # 37 test
@@ -373,6 +425,10 @@ npm run test:auth         # 15 test
 npm run test:history      # 8 test
 npm run test:password-reset # 21 test
 npm run test:audio        # 26 test
+npm run test:haptics      # 5 test
+npm run test:push-client  # 16 test
+npm run test:sw           # 17 test
+npm run test:push         # 18 test
 ```
 
 Mỗi bộ test server khởi động một tiến trình thật ở cổng ngẫu nhiên với **SQLite tạm riêng** (`mkdtemp`), không chạm vào `data/meo.db` và tự dọn sau khi chạy. Có thể kiểm tra PostgreSQL bằng cách chạy server với `DATABASE_URL` trỏ tới database test và lặp lại các kịch bản thủ công; bộ test tự động hiện chạy trên SQLite.
@@ -385,6 +441,9 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 - `test/history.test.mjs` (8 test): khách với khách không lưu ván; ván một tài khoản + khách lưu ảnh chụp đối thủ; chi tiết replay có đủ nước/đường thắng và chỉ người trong ván xem được; phân trang/lọc cỡ bàn/lọc kết quả + thống kê; đấu lại tạo bản ghi mới; thắng rồi ngắt kết nối chỉ lưu một lần; đối thủ xoá tài khoản hiển thị ẩn danh; **ván 4×4–8×8 cũ vẫn nằm trong DB nhưng bị ẩn khỏi danh sách, chi tiết và thống kê**.
 - `test/audio.test.mjs` (26 test): bảng scene menu/khác, góc nhìn kết quả online/AI/2 người/replay, kẹp âm lượng và đường cong, migrate khóa âm lượng cũ, `buildBar` 8 ô nhịp/pentatonic, engine tạo context sau unlock, giới hạn 16 voice (không bỏ âm ưu tiên), node về 0 sau khi phát, SFX cam/xám khác nhau + pan đối thủ, nhạc một bộ phát/timer được xoá, timer mặc định không phụ thuộc `this` (lỗi Illegal invocation trên Chrome), facade log đúng trước/sau tương tác, menu→menu không bật lại, vào ván dừng nhạc, nghe thử trước unlock, tab ẩn suspend/resume, tắt/bật âm thanh, và storage migrate cài đặt.
 - `test/haptics.test.mjs` (5 test): rung đúng một lần với pattern 35 ms, tôn trọng công tắc, không rung khi tab ẩn, máy không hỗ trợ, `vibrate` trả `false`/ném lỗi đều không làm hỏng game.
+- `test/push-client.test.mjs` (16 test): nhận diện iPhone/iPad thật và iPadOS tự xưng `MacIntel`, phân loại trạng thái `disabled/insecure/ios-install/unsupported/permission-denied/subscribed/ready`, quyết định nhấp nháy tiêu đề, title blinker đổi ngôn ngữ và trả lại tiêu đề gốc, Badging API, chuyển khóa VAPID base64url, body đăng ký push, đăng ký/huỷ đăng ký, gửi meta cho service worker, công tắc iOS thử nghiệm và mã thiết bị 32 hex ổn định.
+- `test/sw.test.mjs` (17 test): cache 29 mục + `skipWaiting`, xoá cache cũ + `clients.claim`, bỏ qua POST/origin lạ/API/socket/health, network-first và stale-while-revalidate, trả cache khi mất mạng, push hiện đúng title/body/tag/`renotify`/`vibrate`/URL, dữ liệu hỏng dùng mặc định, cắt tiêu đề/body, `notificationclick` focus + `postMessage` mã phòng hoặc `openWindow`, từ chối URL/mã sai, lưu meta và `pushsubscriptionchange` đăng ký lại (có/không có subscription, thiếu khóa VAPID).
+- `test/push.test.mjs` (18 test): allowlist endpoint và kiểm tra body; payload không chứa tên; tối đa 5 subscription/thiết bị và thay thế cùng endpoint; gửi đúng ngôn ngữ, outbox không lộ khóa; 404/410 xoá ngay, lỗi khác tăng `fail_count` rồi xoá; dọn subscription 60 ngày; `pushEnabled:false` khi thiếu VAPID; subscribe từ chối endpoint nội bộ; thông báo thử và rate limit 3/thiết bị/giờ; push lượt chỉ tới người đang ẩn tab, không tới người vừa đi; hạn mức 20 giây; push khi khách vào phòng của chủ đang ẩn; đăng xuất bỏ liên kết nhưng giữ đăng ký; xoá tài khoản xoá đăng ký; log không chứa endpoint/khóa.
 
 ---
 
@@ -423,7 +482,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 29 | Hết giờ bàn ∞ | Chạy `TURN_MS=2000 npm start`, chơi online ∞, không đánh | Sau ~2 giây máy chủ tự đánh ô trống hợp lệ, ván tiếp tục, không bị xử thua; khi chạy thật là 45 giây |
 | 30 | ∞: F5 và đấu lại | Hai cửa sổ phòng ∞, đánh vài nước, F5, đấu lại | F5 khôi phục đủ nước, vùng, nước cuối và lượt; đấu lại reset bàn ∞ và đổi người đi trước |
 | 31 | Bàn phím & i18n ∞ | Dùng Tab/mũi tên tới sát biên vùng; đổi sang English | Không lọt ra ngoài vùng; nhãn đọc đúng toạ độ; tên cỡ bàn, luật thắng, bộ lọc điểm đổi sang tiếng Anh |
-| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v12` xoá cache cũ, app shell và module AI/∞ mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
+| 32 | PWA nhận bản mới | Mở app bằng bản cũ, tải lại sau khi deploy | Service worker `meo-meo-caro-v14` xoá cache cũ, app shell và module AI/∞/push mới được tải; `/api`, `/socket.io`, `/health` không bị cache |
 | 33 | ∞: nhập môn & điều khiển | Chọn ∞, dùng phím mũi tên + Enter; kéo chuột; cuộn/chụm; bấm ±, về giữa, tới nước vừa đánh | Ô (0,0) ở giữa; con trỏ luôn hiện; kéo >6px không đặt quân; zoom trong khoảng 24–96px; nút về giữa/tới nước vừa đánh hoạt động; không lỗi console |
 | 34 | ∞: vùng tự mở rộng | Đánh ra sát biên rồi ra ngoài vùng cũ | Vùng trắng mở thêm 2 ô quanh quân xa nhất có hoạt ảnh ~250ms, không co lại; ô ngoài vùng bị làm mờ và bấm vào chỉ nhấp nháy cảnh báo |
 | 35 | ∞: thắng và overline | Tạo 5 quân ngang/dọc/chéo ở toạ độ âm; tạo chuỗi 6 quân | Thắng đúng, sợi len nối trọn chuỗi (kể cả >5), thẻ kết quả đúng người thắng, có thông báo cho trình đọc màn hình |
@@ -459,7 +518,7 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 65 | Online: hết giờ / hủy | A xin rồi để hết 15 giây; lặp lại rồi bấm **Hủy xin** | Hết giờ: A thấy "Đối thủ không trả lời." (không phải lời từ chối); hủy: B thấy "Đối thủ đã hủy xin đi lại.", hộp thoại đóng, bàn giữ nguyên |
 | 66 | Online: Enter/Esc và 360px | Mở hộp thoại xin đi lại, bấm Enter rồi Esc; thu cửa sổ 360px | Enter không đồng ý và không đổi bàn; Esc = từ chối; hộp thoại + bong bóng không tràn ngang, chữ đọc được |
 | 67 | Online: F5 khi đang xin | A xin đi lại rồi F5 | Server hủy yêu cầu, A vào lại đúng bàn, không kẹt hộp thoại/banner, vẫn đánh tiếp được; B thấy hộp thoại đóng |
-| 68 | PWA offline + đi lại | Cài PWA, chơi online một lần cho cache, chặn mạng, tải lại, chơi AI rồi **Đi lại** | Trang và module tải từ cache v12, AI 3×3 chạy và đi lại được khi offline, tiếng đặt quân vẫn phát sau một lần chạm, không lỗi console |
+| 68 | PWA offline + đi lại | Cài PWA, chơi online một lần cho cache, chặn mạng, tải lại, chơi AI rồi **Đi lại** | Trang và module tải từ cache v14, AI 3×3 chạy và đi lại được khi offline, tiếng đặt quân vẫn phát sau một lần chạm, không lỗi console |
 | 69 | Chạm đầu tiên & nhạc menu | Mở app, chưa chạm gì rồi chạm một lần | Trước khi chạm không có âm thanh; chạm xong nhạc menu nổi lên ~1,2 giây; vào ván nhạc tắt dần ~0,7 giây; về menu nhạc trở lại, menu→menu không bị bật lại |
 | 70 | Âm lượng & nghe thử | Cài đặt → kéo ba thanh Tổng/Nhạc/Hiệu ứng, bấm từng nút nghe thử, tải lại trang | Giá trị đổi ngay không rè; thanh Hiệu ứng nhả tay phát tiếng mèo nhỏ; mặc định 80/40/80; sau tải lại vẫn giữ; nút nhạc bật/tắt được ngay cả trước khi chạm lần đầu |
 | 71 | Tiếng đặt quân | Chơi AI và 2 người cùng máy; chơi online hai máy | Mèo cam và mèo xám khác cao độ; với AI, quân của mình rõ hơn, quân máy nhỏ hơn; 2 người cùng máy không lệch tai; online mỗi bên nghe quân mình rõ, quân đối thủ nhỏ và lệch tai; mỗi nước đúng một tiếng kể cả khi F5/`room:state` lặp |
@@ -467,6 +526,11 @@ Mỗi bộ test server khởi động một tiến trình thật ở cổng ng�
 | 73 | Online góc nhìn & bỏ cuộc | Hai context độc lập chơi hết ván; F5 bên thua; đóng tab đối thủ | Mỗi bên nghe đúng thắng/thua của mình, hiệu ứng đúng một lần; F5 khi đã xong không phát lại; đóng tab quá 60 giây người ở lại thắng, không confetti |
 | 74 | Giảm chuyển động & thiếu Web Audio | Bật Giảm chuyển động rồi thua; chạy trình duyệt chặn Web Audio | Không mây mưa/confetti/đổi màu động nhưng vẫn có âm thua và chữ; thiếu Web Audio thì game vẫn chạy, không lỗi console |
 | 75 | Rung khi đến lượt | Trên Android Chrome (hoặc giả lập `navigator.vibrate`), chơi online hai máy; tắt công tắc rồi thử lại | Khi đối thủ đi xong và đến lượt mình, máy rung nhẹ 35 ms đúng một lần; tự đánh không rung; tắt công tắc thì không rung; tải lại vẫn giữ lựa chọn |
+| 76 | Bật thông báo đẩy (máy tính) | Chạy server có đủ 3 biến VAPID trên localhost → Cài đặt → **Bật thông báo** | Hộp quyền hiện đúng trong cú chạm; trạng thái chuyển “Đã bật”; nút **Tắt** và **Gửi thông báo thử** hiện ra; tải lại trang vẫn giữ trạng thái |
+| 77 | Tab ẩn — nhắc không cần push | Hai người chơi online, một bên chuyển sang tab khác đúng lúc đối thủ đánh | Tiêu đề đổi thành “● Đến lượt bạn” nhấp nháy mỗi 1,2 giây, có huy hiệu nếu trình duyệt hỗ trợ; quay lại tab thì tiêu đề và huy hiệu khôi phục; không có thêm thông báo hệ thống khi tab vẫn hiện |
+| 78 | Push khi app nền/đóng | Bật push, ẩn hoặc đóng app, nhờ đối thủ đánh | Đúng **một** banner “Đến lượt bạn rồi! 😺” sau nước đi; bấm vào mở đúng phòng; không có thông báo lặp cho cùng lượt |
+| 79 | iPhone/iPad | Lần lượt mở Safari thường và PWA đã cài; kiểm tra Cài đặt, bật thông báo, gửi thử, khoá máy | Safari thường: hướng dẫn thêm vào Màn hình chính, không có nút bật. PWA iOS 16.4+: xin quyền sau chạm, banner và âm/rung **do iOS quyết định**, iPad **không rung**; bấm thông báo mở đúng phòng |
+| 80 | Thiếu khóa / không HTTPS | Chạy server không có VAPID; sau đó mở bằng `http://` khác localhost | `GET /api/config` trả `pushEnabled:false`, mục push ẩn, server chỉ cảnh báo một lần; giao diện giải thích cần HTTPS thay vì treo hoặc báo lỗi khó hiểu |
 
 Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nháy viền nước đi/confetti; xóa localStorage rồi tải lại → bảng điểm về 0 nhưng app vẫn chạy; chặn localStorage → app dùng bộ nhớ tạm; nhập mã `ABC` → báo mã không hợp lệ; mã 5 ký tự không tồn tại → báo không tìm thấy phòng; người thứ ba vào phòng đủ 2 người → báo phòng đầy; người tạo phòng rời khi đang chờ → phòng bị xoá ngay.
 
@@ -490,6 +554,9 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 - **Xoá tài khoản là xoá mềm.** Bản ghi `users` được giữ để lịch sử không mồ côi; username/display_name bị ẩn danh và API lịch sử trả "Người chơi đã xóa" cho cả hai phía, tránh lộ tên cũ.
 - **Đi lại dựng lại bàn từ danh sách nước, không sửa từng ô.** `game-core.js` có `undoTargetCount`/`applyUndo` dùng chung; online cắt `moveLog` rồi dựng lại `board`/`cells`/`region`/`lastMove`/`winLine`/kết quả, giữ nguyên `first_player`. Không đổi schema DB: `matches.moves` lưu danh sách cuối cùng sau các lần đi lại. Trong lúc chờ đối thủ, server khoá `game:move`, dừng `turnDeadline` và cấp lại **đủ** thời gian lượt sau khi phân xử.
 - **Âm thanh là một facade duy nhất, tổng hợp hoàn toàn.** `audio.js` giữ một `AudioContext` tạo sau thao tác đầu, một bus nhạc và một bus hiệu ứng, reverb tạo bằng nhiễu, tối đa 16 voice SFX (âm thắng/thua/hòa không bị bỏ). Nhạc menu 92 BPM tự soạn trên thang pentatonic trưởng, sequencer nhìn trước 120ms; nhạc không bao giờ chồng hai bộ phát, tự giảm ~40% trước âm kết quả và tắt khi rời menu. Góc nhìn kết quả là hàm thuần `resultPerspective` nên online mỗi bên nghe đúng thắng/thua; hiệu ứng kết quả khoá theo `roomId:round:moveCount:winner` để F5/`room:state` lặp không phát lại. Cài đặt cũ được migrate sang khóa mới, giá trị hỏng bị kẹp về 0–1.
+- **Nhắc lượt là bốn lớp, không phải bốn thông báo.** Server chỉ gửi push khi người nhận thực sự không nhìn thấy bàn (client báo `presence:set`), không phải người vừa đi, ván đang chơi và không có undo chờ; client chỉ nhấp nháy tiêu đề khi `document.hidden` và đúng lượt mình. Vì vậy cùng một lượt không thể vừa rung, vừa nháy tiêu đề, vừa có banner. Push có TTL 120 giây, ưu tiên cao, hết hạn thì bỏ thay vì làm phiền muộn.
+- **Endpoint push là dữ liệu nhạy cảm.** Mọi endpoint được kiểm tra allowlist HTTPS trước khi lưu/gửi để chống SSRF; log chỉ ghi mã trạng thái, không ghi endpoint, `p256dh`, `auth` hay khóa VAPID. Payload không chứa tên người chơi, chỉ mã phòng và lời nhắc chung.
+- **Không hứa rung trên iPhone/iPad.** Không có API rung trên iOS; Web Push chỉ có trên PWA iOS 16.4+ và âm/rung do hệ điều hành quyết định. iPad không có động cơ rung. Thử nghiệm `input switch` chỉ chạy trong thao tác chạm và không được dùng để kết luận push mạng sẽ rung.
 - **Không chat tự do.** Chỉ có biểu cảm giới hạn để tránh lạm dụng.
 - **Email là tuỳ chọn, không phải đăng nhập.** Không có đăng nhập bằng email/OAuth. Email chỉ xác thực và khôi phục mật khẩu; khi chưa cấu hình mail, mọi tính năng cũ vẫn chạy và email đăng ký là tuỳ chọn. Link trong thư luôn dùng `PUBLIC_URL`, token chỉ nằm trong fragment và DB chỉ lưu SHA-256.
 - **Đổi mật khẩu và xoá tài khoản vẫn cần mật khẩu hiện tại.** Quên mật khẩu dùng link email dùng một lần; tài khoản không có email đã xác thực được hỗ trợ bằng script cục bộ `npm run admin:reset-password`.
@@ -523,7 +590,13 @@ Thử thêm: chọn ∞ rồi bật Giảm chuyển động → không nhấp nh
 | Gửi thư lỗi 401/403 | Sai App Password/SMTP key hoặc `MAIL_FROM` không khớp tài khoản | Kiểm tra `SMTP_USER`/`SMTP_PASS`; Gmail cần App Password; Brevo/Resend cần xác minh người gửi/domain |
 | Không nhận thư đặt lại | Email chưa xác thực hoặc bị rate limit | Xác thực email trước; thử lại sau 1 giờ; dùng `npm run admin:reset-password` nếu không có email |
 | Thư vào spam | Người gửi/domain chưa xác minh | Xác minh domain (SPF/DKIM) ở nhà cung cấp; dùng `MAIL_FROM` cùng domain |
-| Đang đăng nhập bỗng thành khách khi server ngủ | Bản cũ chưa có retry | Bản này giữ đăng nhập tới ~90 giây khi lỗi mạng; kiểm tra service worker đã nhận cache v12 |
+| Đang đăng nhập bỗng thành khách khi server ngủ | Bản cũ chưa có retry | Bản này giữ đăng nhập tới ~90 giây khi lỗi mạng; kiểm tra service worker đã nhận cache v14 |
+| Không thấy mục Thông báo đẩy | Thiếu khóa VAPID, đang mở bằng `http://` không phải localhost, hoặc trình duyệt không hỗ trợ | Kiểm tra `GET /api/config` có `pushEnabled:true` và `vapidPublicKey`; dùng HTTPS; xem Cài đặt có gợi ý tương ứng |
+| Bật thông báo báo lỗi | Quyền bị từ chối trước đó hoặc không phải cú chạm | Mở cài đặt trình duyệt/hệ thống để cấp lại quyền; trên iOS phải cài PWA và mở từ biểu tượng |
+| Bấm thông báo thử nhưng không có banner | Banner bị chặn bởi chế độ tập trung, tab đang hiện, hoặc subscription đã bị thu hồi | Kiểm tra quyền hệ thống/Chrome; bấm lại sau vài giây; tắt rồi bật lại thông báo để đăng ký mới |
+| Push không tới khi tab ẩn | Người nhận chưa bật push trên thiết bị đó, đang nhìn thấy bàn, hoặc vừa nhận một push trong 20 giây | Bật push trên đúng thiết bị; đợi qua hạn mức; kiểm tra server có đủ biến VAPID và đang chạy HTTPS |
+| iPhone không rung khi có push | iOS không có Vibration API; âm/rung do cài đặt hệ thống | Không phải lỗi app. Kiểm tra công tắc im lặng/Không làm phiền; iPad không có động cơ rung nên không bao giờ rung |
+| Tiêu đề không nhấp nháy | Tab đang hiện, không phải lượt bạn, hoặc trình duyệt ẩn tiêu đề tab | Chỉ nháy khi tab ẩn đúng lượt bạn; một số trình duyệt di động không hiển thị tiêu đề tab |
 
 ---
 

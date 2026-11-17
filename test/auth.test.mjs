@@ -384,12 +384,16 @@ await test('migrations are idempotent and run from the CLI', async () => {
   const matches = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='matches'").get();
   const verifications = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='email_verifications'").get();
   const resets = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='password_resets'").get();
+  const pushSubs = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='push_subscriptions'")
+    .get();
   db.close();
-  assert.equal(migrations.total, 2);
+  assert.equal(migrations.total, 3);
   assert.ok(users);
   assert.ok(matches);
   assert.ok(verifications);
   assert.ok(resets);
+  assert.ok(pushSubs);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
